@@ -1,0 +1,14 @@
+*.log
+*.tmp
+*.bak
+*.old
+__pycache__
+.vscode/
+.idea/
+dist/
+build/
+venv/
+*.egg-info/
+.coverage
+coverage.xml
+.tox
