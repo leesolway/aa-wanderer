@@ -5,7 +5,8 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 
-from wanderer.models import WandererManagedMap, WandererUser
+from wanderer.models import WandererAccount, WandererManagedMap
+from wanderer.tasks import add_alts_to_map
 
 
 @login_required
@@ -27,14 +28,16 @@ def link(request, map_id: int):
     if wanderer_map.user_has_account(user):
         messages.warning(request, _("You are already linked to this map"))
     else:
-        WandererUser.objects.create(user=user, wanderer_map=wanderer_map)
+        wanderer_user = WandererAccount.objects.create(
+            user=user, wanderer_map=wanderer_map
+        )
+        add_alts_to_map.delay(wanderer_user.id, wanderer_map.id)
         messages.success(
             request,
             _(
                 "Successfully linked your account to this map. Character update starting now."
             ),
         )
-        # TODO add update
 
     return redirect("services:services")
 
@@ -43,12 +46,30 @@ def link(request, map_id: int):
 @permission_required("wanderer.basic_access")
 def sync(request, map_id: int):
     """Checks that all the user characters are properly added to the access list"""
-    # TODO create sync code
+    wanderer_map = get_object_or_404(WandererManagedMap, pk=map_id)
+    wanderer_user = get_object_or_404(
+        WandererAccount, user=request.user, wanderer_map=wanderer_map
+    )
+    add_alts_to_map.delay(wanderer_user.id, wanderer_map.id)
+    messages.success(request, _("Updating your characters with the map."))
+
+    return redirect("services:services")
 
 
 @login_required
 @permission_required("wanderer.basic_access")
 def remove(request, map_id: int):
     """Removes all characters from the map access list and deletes the user"""
-    # TODO create remove code
-    pass
+    wanderer_map = get_object_or_404(WandererManagedMap, pk=map_id)
+    user = request.user
+
+    if not wanderer_map.user_has_account(user):
+        messages.warning(request, _("You don't seem to be linked to this map."))
+    else:
+        wanderer_map.delete_user(user)
+
+        messages.success(
+            request, _("Successfully removed you from the map %s" % wanderer_map)
+        )
+
+    return redirect("services:services")

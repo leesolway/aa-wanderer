@@ -33,6 +33,10 @@ Configure your Auth settings (`local.py`) as follows:
 - Add below lines to your settings file:
 
 ```python
+CELERYBEAT_SCHEDULE['wanderer_cleanup_access_lists'] = {
+    'task': 'wanderer.tasks.cleanup_all_acess_lists',
+    'schedule': crontab(minute='0', hour='*/1'),
+}
 ```
 
 Optional: Alter the application settings.

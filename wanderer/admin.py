@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from wanderer.models import WandererManagedMap, WandererUser
+from wanderer.models import WandererAccount, WandererManagedMap
 from wanderer.wanderer import create_acl_associated_to_map
 
 
@@ -40,7 +40,7 @@ class WandererManagedMapAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
 
 
-@admin.register(WandererUser)
+@admin.register(WandererAccount)
 class WandererUserAdmin(admin.ModelAdmin):
     list_filter = ["wanderer_map"]
     list_display = ["user", "wanderer_map"]

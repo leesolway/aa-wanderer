@@ -49,6 +49,14 @@ class WandererManagedMapService(ServicesHook):
     def show_service_ctrl(self, user):
         return self.managed_map.accessible_by(user)
 
+    def delete_user(self, user, notify_user=False) -> bool:
+        try:
+            self.managed_map.delete_user(user)
+            return True
+        except Exception as e:
+            logger.error("Couldn't delete the user properly: %s", e)
+            return False
+
 
 def add_del_callback(*args, **kwargs):
     """

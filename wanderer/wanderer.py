@@ -60,15 +60,18 @@ def create_acl_associated_to_map(
     return acl_id, acl_key
 
 
-def get_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str):
+def get_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str) -> list[int]:
     """
     Returns all members eve_character_id present in an ACL
     """
+    logger.info("Requesting character on the ACL of map %s / %s", wanderer_url, acl_id)
 
     r = requests.get(
         f"{wanderer_url}/api/acls/{acl_id}",
         headers={"Authorization": f"Bearer {acl_api_key}"},
     )
+    logger.debug(r)
+    logger.debug(r.text)
 
     if r.status_code == 401:
         raise BadAPIKeyError(

@@ -28,6 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "allianceauth>=4",
+    "allianceauth-app-utils>=1.25",
 ]
 
 

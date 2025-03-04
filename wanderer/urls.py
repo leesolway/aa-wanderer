@@ -13,4 +13,4 @@ module_urls = [
     path("remove/<int:map_id>", views.remove, name="remove"),
 ]
 
-urlpatterns = [path("wanderer", include((module_urls, app_name), namespace=app_name))]
+urlpatterns = [path("wanderer/", include((module_urls, app_name), namespace=app_name))]

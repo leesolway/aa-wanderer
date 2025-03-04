@@ -1,5 +1,7 @@
 """Models."""
 
+from typing import Optional
+
 from django.conf import settings
 from django.contrib.auth.models import Group, User
 from django.db import models
@@ -12,9 +14,16 @@ from allianceauth.eveonline.models import (
     EveCorporationInfo,
     EveFactionInfo,
 )
+from allianceauth.framework.api.user import get_all_characters_from_user
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.managers import WandererManagedMapManager
+from wanderer.wanderer import (
+    NotFoundError,
+    add_character_to_acl,
+    get_acl_members,
+    remove_member_from_access_list,
+)
 
 logger = get_extension_logger(__name__)
 
@@ -171,10 +180,59 @@ class WandererManagedMap(models.Model):
 
     def user_has_account(self, user: User) -> bool:
         """Return true if the user has an active account on this map"""
-        return WandererUser.objects.filter(user=user, wanderer_map=self).exists()
+        return WandererAccount.objects.filter(user=user, wanderer_map=self).exists()
+
+    def get_user_account(self, user: User) -> Optional["WandererAccount"]:
+        """Returns the user account associated to this map if it exists"""
+        try:
+            return WandererAccount.objects.get(user=user, wanderer_map=self)
+        except WandererAccount.DoesNotExist:
+            return None
+
+    def delete_user(self, user: User):
+        """Removes the user characters from the map and then deletes the associated account"""
+        wanderer_account = self.get_user_account(user)
+        for character_to_remove_id in wanderer_account.get_all_character_ids():
+            try:
+                self.remove_member_from_access_list(character_to_remove_id)
+            except (
+                NotFoundError
+            ):  # If the character is already off the access list we're good
+                pass
+        wanderer_account.delete()
+
+    def get_character_ids_on_access_list(self) -> list[int]:
+        """Returns all character_ids present on the access list"""
+        return get_acl_members(self.wanderer_url, self.map_acl_id, self.map_acl_api_key)
+
+    def add_character_to_acl(self, character_id: int):
+        """Adds a single character to the ACL with the viewer role"""
+        return add_character_to_acl(
+            self.wanderer_url, self.map_acl_id, self.map_acl_api_key, character_id
+        )
+
+    def remove_member_from_access_list(self, member_id: int):
+        """
+        Removes a member from the access list.
+        member_id can be character/corporation/alliance.
+        """
+
+        return remove_member_from_access_list(
+            self.wanderer_url, self.map_acl_id, self.map_acl_api_key, member_id
+        )
+
+    def get_all_accounts_characters_ids(self) -> list[int]:
+        """
+        Returns a list of all character ids of accounts linked to this map
+        """
+        return list(
+            self.accounts.values_list(
+                "user__character_ownerships__character__character_id", flat=True
+            )
+        )
 
 
-class WandererUser(models.Model):
+class WandererAccount(models.Model):
     """Represents a user linked to a wanderer map"""
 
     user = models.ForeignKey(
@@ -183,6 +241,8 @@ class WandererUser(models.Model):
     wanderer_map = models.ForeignKey(
         WandererManagedMap,
         models.CASCADE,
+        related_name="accounts",
+        related_query_name="account",
         help_text=_("Wanderer map to which the user is linked"),
     )
 
@@ -194,4 +254,11 @@ class WandererUser(models.Model):
             models.UniqueConstraint(
                 fields=["user", "wanderer_map"], name="functional_pk_user_map"
             )
+        ]
+
+    def get_all_character_ids(self) -> list[int]:
+        """Return all character ids associated to this account"""
+        return [
+            character.character_id
+            for character in get_all_characters_from_user(self.user)
         ]
