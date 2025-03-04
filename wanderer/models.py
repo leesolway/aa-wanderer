@@ -160,7 +160,7 @@ class WandererManagedMap(models.Model):
                 pass
 
             logger.debug(
-                f"{len(queries)} queries for {main_character}'s visible characters."
+                "%d queries for %s 's visible characters", len(queries), main_character
             )
 
             if settings.DEBUG:

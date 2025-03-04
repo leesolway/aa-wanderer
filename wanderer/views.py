@@ -69,7 +69,7 @@ def remove(request, map_id: int):
         wanderer_map.delete_user(user)
 
         messages.success(
-            request, _("Successfully removed you from the map %s" % wanderer_map)
+            request, _("Successfully removed you from the map %s") % wanderer_map
         )
 
     return redirect("services:services")

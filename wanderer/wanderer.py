@@ -15,6 +15,9 @@ class NotFoundError(Exception):
     """Exception raised when the API returned an expected 404"""
 
 
+DEFAULT_TIMEOUT = 5
+
+
 def create_acl_associated_to_map(
     wanderer_url: str, map_slug: str, requesting_character: int, map_api_key: str
 ) -> (str, str):
@@ -42,13 +45,14 @@ def create_acl_associated_to_map(
                 "owner_eve_id": str(requesting_character),
             }
         },
+        timeout=DEFAULT_TIMEOUT,
     )
 
     logger.debug("Received status code %d", r.status_code)
 
     if r.status_code == 401:
         raise BadAPIKeyError(
-            f"The API key {map_api_key} returned a 401 when trying to create an access list on map {wanderer_url} {map_slug}"
+            f"The API key {map_api_key} returned a 401 when trying to create an ACL on map {wanderer_url} {map_slug}"
         )
 
     r.raise_for_status()
@@ -69,6 +73,7 @@ def get_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str) -> list[in
     r = requests.get(
         f"{wanderer_url}/api/acls/{acl_id}",
         headers={"Authorization": f"Bearer {acl_api_key}"},
+        timeout=DEFAULT_TIMEOUT,
     )
     logger.debug(r)
     logger.debug(r.text)
@@ -103,6 +108,7 @@ def add_character_to_acl(
                 "role": "viewer",
             }
         },
+        timeout=DEFAULT_TIMEOUT,
     )
 
     if r.status_code == 401:
@@ -123,6 +129,7 @@ def remove_member_from_access_list(
     r = requests.delete(
         f"{wanderer_url}/api/acls/{acl_id}/members/{member_id}",
         headers={"Authorization": f"Bearer {acl_api_key}"},
+        timeout=DEFAULT_TIMEOUT,
     )
 
     if r.status_code == 401:
