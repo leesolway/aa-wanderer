@@ -54,13 +54,25 @@ test-py313-dj42:
   script:
     - tox -e py313-django42
 
-# deploy-pypi:
-#   stage: deploy
-#   image: python:3.10-bookworm
-#   before_script:
-#     - pip install twine wheel build
-#   script:
-#     - python -m build
-#     - twine upload dist/*
-#   only:
-#     - tags
+deploy-pypi:
+  stage: deploy
+  image: python:3.10-bookworm
+  before_script:
+    - pip install twine wheel build
+    - apt update && apt install -y jq
+
+  id_tokens:
+    PYPI_ID_TOKEN:
+      aud: pypi
+  script:
+    - python -m build
+    # Retrieve the OIDC token from GitLab CI/CD, and exchange it for a PyPI API token
+    - oidc_token=$(python -m id PYPI)
+    - resp=$(curl -X POST https://pypi.org/_/oidc/mint-token -d "{\"token\":\"${oidc_token}\"}")
+    - api_token=$(jq --raw-output '.token' <<< "${resp}")
+
+    # Upload to PyPI authenticating via the newly-minted token
+    - twine upload -u __token__ -p "${api_token}" dist/*
+
+  rules:
+    - if: $CI_COMMIT_TAG
