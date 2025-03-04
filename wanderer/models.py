@@ -42,6 +42,10 @@ class WandererManagedMap(models.Model):
 
     objects = WandererManagedMapManager()
 
+    name = models.CharField(
+        max_length=80,
+        help_text=_("User friendly name for your users to recognize the map"),
+    )
     wanderer_url = models.CharField(
         max_length=120, help_text=_("URL of the wanderer instance")
     )

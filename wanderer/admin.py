@@ -10,7 +10,7 @@ from wanderer.wanderer import create_acl_associated_to_map
 class WandererManagedMapAdmin(admin.ModelAdmin):
     readonly_fields = ["map_acl_id", "map_acl_api_key"]
     fieldsets = [
-        (None, {"fields": ["wanderer_url", "map_slug", "map_api_key"]}),
+        (None, {"fields": ["name", "wanderer_url", "map_slug", "map_api_key"]}),
         ("Access List", {"fields": ["map_acl_id", "map_acl_api_key"]}),
         (
             "Access",

@@ -40,6 +40,7 @@ class WandererManagedMapService(ServicesHook):
         return render_to_string(
             self.service_ctrl_template,
             {
+                "title": self.managed_map.name,
                 "url": str(self.managed_map),
                 "has_account": self.managed_map.user_has_account(request.user),
                 "map_id": self.managed_map.id,
