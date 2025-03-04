@@ -10,7 +10,9 @@ from wanderer.wanderer import (
     add_character_to_acl,
     create_acl_associated_to_map,
     get_acl_members,
+    get_non_member_characters,
     remove_member_from_access_list,
+    set_character_to_member,
 )
 
 
@@ -212,7 +214,7 @@ class TestApi(TestCase):
                     {
                         "member": {
                             "eve_character_id": "2112073677",
-                            "role": "viewer",
+                            "role": "member",
                         }
                     }
                 ),
@@ -224,7 +226,7 @@ class TestApi(TestCase):
                     "name": "T'rahk Rokym",
                     "inserted_at": "2025-03-03T22:29:53.334988Z",
                     "updated_at": "2025-03-03T22:29:53.334988Z",
-                    "role": "viewer",
+                    "role": "member",
                     "eve_character_id": "2112073677",
                 }
             },
@@ -275,7 +277,9 @@ class TestApi(TestCase):
         """Error will be returned if an unknown owner_eve_id is given when creating an access list"""
         responses.post(
             "http://wanderer.localhost/api/map/acls?slug=map_slug",
-            match=[matchers.header_matcher({"Authorization": "Bearer bad-api-key"})],
+            match=[
+                matchers.header_matcher({"Authorization": "Bearer bad-api-key"}),
+            ],
             status=400,
             json={
                 "error": '{:error, "owner_eve_id does not match any existing character"}'
@@ -289,4 +293,79 @@ class TestApi(TestCase):
             "map_slug",
             1001,
             "bad-api-key",
+        )
+
+    @responses.activate
+    def test_get_non_member_characters(self):
+        responses.get(
+            "http://wanderer.localhost/api/acls/ACL_UUID",
+            match=[
+                matchers.header_matcher({"Authorization": "Bearer bad-api-key"}),
+            ],
+            json={
+                "data": {
+                    "id": "3ed5339a-ad4b-423f-ae44-acbda1b89fe1",
+                    "name": "AA ACL quick",
+                    "description": "Access list managed by aa-wanderer for the map quick. Do not manually edit.",
+                    "members": [
+                        {
+                            "id": "965a45fd-fe9d-4473-aa41-64d92df26b6a",
+                            "name": "Feh'dow Rokym",
+                            "inserted_at": "2025-03-04T22:29:33.549264Z",
+                            "updated_at": "2025-03-04T22:29:33.549264Z",
+                            "role": "viewer",
+                            "eve_character_id": "2116864032",
+                        },
+                        {
+                            "id": "02c32352-72f8-4f88-b9ac-073fefdfb88f",
+                            "name": "T'rahk Rokym",
+                            "inserted_at": "2025-03-04T22:29:36.457675Z",
+                            "updated_at": "2025-03-04T22:29:44.022579Z",
+                            "role": "manager",
+                            "eve_character_id": "2112073677",
+                        },
+                        {
+                            "id": "13fcef47-0c1a-4165-af72-d81af4afec58",
+                            "name": "Dkw'sks Rokym",
+                            "inserted_at": "2025-03-04T22:29:41.226575Z",
+                            "updated_at": "2025-03-04T22:29:53.636615Z",
+                            "role": "admin",
+                            "eve_character_id": "2116461863",
+                        },
+                        {
+                            "id": "efa8a772-aaa4-41ac-b24a-a1857db0a358",
+                            "name": "Rokym's managment organisation",
+                            "inserted_at": "2025-03-04T22:41:04.620362Z",
+                            "updated_at": "2025-03-04T22:41:04.620362Z",
+                            "role": "viewer",
+                            "eve_character_id": None,
+                        },
+                    ],
+                    "inserted_at": "2025-03-04T21:05:21.902253Z",
+                    "updated_at": "2025-03-04T21:05:21.902253Z",
+                    "api_key": "447c56d3-3ca1-4224-a961-ec7871a111e6",
+                    "owner_id": "aa49f1b7-35de-4fee-9a9a-8165d52ca8bc",
+                }
+            },
+        )
+
+        non_members_ids = get_non_member_characters(
+            "http://wanderer.localhost", "ACL_UUID", "bad-api-key"
+        )
+
+        self.assertIn(2112073677, non_members_ids)
+        self.assertIn(2116461863, non_members_ids)
+
+    @responses.activate
+    def test_set_character_to_member(self):
+        responses.put(
+            "http://wanderer.localhost/api/acls/ACL_UUID/members/1001",
+            match=[
+                matchers.header_matcher({"Authorization": "Bearer bad-api-key"}),
+                matchers.json_params_matcher({"member": {"role": "member"}}),
+            ],
+        )
+
+        set_character_to_member(
+            "http://wanderer.localhost", "ACL_UUID", "bad-api-key", 1001
         )

@@ -84,20 +84,7 @@ def get_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str) -> list[in
     """
     logger.info("Requesting character on the ACL of map %s / %s", wanderer_url, acl_id)
 
-    r = requests.get(
-        f"{wanderer_url}/api/acls/{acl_id}",
-        headers={"Authorization": f"Bearer {acl_api_key}"},
-        timeout=DEFAULT_TIMEOUT,
-    )
-    logger.debug(r)
-    logger.debug(r.text)
-
-    if r.status_code == 401:
-        raise BadAPIKeyError(
-            f"The API key {acl_api_key} returned a 401 when trying to access the members of ACL {wanderer_url} {acl_id}"
-        )
-
-    r.raise_for_status()
+    r = _get_raw_acl_members(wanderer_url, acl_id, acl_api_key)
 
     return [
         int(member["eve_character_id"])
@@ -119,7 +106,7 @@ def add_character_to_acl(
         json={
             "member": {
                 "eve_character_id": str(character_id),
-                "role": "viewer",
+                "role": "member",
             }
         },
         timeout=DEFAULT_TIMEOUT,
@@ -155,3 +142,71 @@ def remove_member_from_access_list(
         raise NotFoundError(f"Member id {member_id} was not found on ACL {acl_id}")
 
     r.raise_for_status()
+
+
+def get_non_member_characters(
+    wanderer_url: str, acl_id: str, acl_api_key: str
+) -> list[int]:
+    """
+    Return the character_id of characters that have a role different from member
+    """
+    logger.info(
+        "Requesting character on the ACL of map %s / %s without member role",
+        wanderer_url,
+        acl_id,
+    )
+
+    r = _get_raw_acl_members(wanderer_url, acl_id, acl_api_key)
+
+    return [
+        int(member["eve_character_id"])
+        for member in r.json()["data"]["members"]
+        if member["role"] != "member" and member["eve_character_id"]
+    ]
+
+
+def set_character_to_member(
+    wanderer_url: str, acl_id: str, acl_api_key: str, character_id
+):
+    """
+    Sets the character with the given eve id to member on the access list
+    """
+    logger.info(
+        "Making character %d to member on map %s / %s",
+        character_id,
+        wanderer_url,
+        acl_id,
+    )
+
+    r = requests.put(
+        f"{wanderer_url}/api/acls/{acl_id}/members/{character_id}",
+        headers={"Authorization": f"Bearer {acl_api_key}"},
+        json={
+            "member": {
+                "role": "member",
+            }
+        },
+        timeout=DEFAULT_TIMEOUT,
+    )
+
+    r.raise_for_status()
+
+
+def _get_raw_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str):
+    """Returns the raw result of requesting the members on an access list"""
+    r = requests.get(
+        f"{wanderer_url}/api/acls/{acl_id}",
+        headers={"Authorization": f"Bearer {acl_api_key}"},
+        timeout=DEFAULT_TIMEOUT,
+    )
+    logger.debug(r)
+    logger.debug(r.text)
+
+    if r.status_code == 401:
+        raise BadAPIKeyError(
+            f"The API key {acl_api_key} returned a 401 when trying to access the members of ACL {wanderer_url} {acl_id}"
+        )
+
+    r.raise_for_status()
+
+    return r

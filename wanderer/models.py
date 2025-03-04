@@ -22,7 +22,9 @@ from wanderer.wanderer import (
     NotFoundError,
     add_character_to_acl,
     get_acl_members,
+    get_non_member_characters,
     remove_member_from_access_list,
+    set_character_to_member,
 )
 
 logger = get_extension_logger(__name__)
@@ -233,6 +235,22 @@ class WandererManagedMap(models.Model):
             self.accounts.values_list(
                 "user__character_ownerships__character__character_id", flat=True
             )
+        )
+
+    def get_non_member_character_ids(self) -> list[int]:
+        """
+        Return a list of all character ids that are not set as members
+        """
+        return get_non_member_characters(
+            self.wanderer_url, self.map_acl_id, self.map_acl_api_key
+        )
+
+    def set_character_to_member(self, character_id: int):
+        """
+        Sets the given character id to member on the access list
+        """
+        set_character_to_member(
+            self.wanderer_url, self.map_acl_id, self.map_acl_api_key, character_id
         )
 
 

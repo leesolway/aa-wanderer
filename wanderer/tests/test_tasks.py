@@ -61,6 +61,10 @@ class TestTasks(TestCase):
         )
         WandererManagedMap.remove_member_from_access_list = MagicMock()
         WandererManagedMap.add_character_to_acl = MagicMock()
+        WandererManagedMap.get_non_member_character_ids = MagicMock(
+            return_value=[1030, 1031]
+        )
+        WandererManagedMap.set_character_to_member = MagicMock()
 
         wanderer_map = create_managed_map()
         create_wanderer_users(wanderer_map, 2)
@@ -72,4 +76,9 @@ class TestTasks(TestCase):
         add_character_calls = [call(1001), call(1010)]
         WandererManagedMap.add_character_to_acl.assert_has_calls(
             add_character_calls, any_order=True
+        )
+        WandererManagedMap.get_non_member_character_ids.assert_called_once()
+        set_character_to_member_calls = [call(1030), call(1031)]
+        WandererManagedMap.set_character_to_member.assert_has_calls(
+            set_character_to_member_calls, any_order=True
         )
