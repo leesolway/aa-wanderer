@@ -10,8 +10,10 @@ https://github.com/Solar-Helix-Independent-Transport/allianceauth-discord-multiv
 
 from django.db.models.signals import post_delete, post_save
 from django.template.loader import render_to_string
+from django.utils.translation import gettext_lazy as _
 
 from allianceauth import hooks
+from allianceauth.notifications.models import Notification
 from allianceauth.services.hooks import ServicesHook, get_extension_logger
 
 from .models import WandererManagedMap
@@ -51,12 +53,31 @@ class WandererManagedMapService(ServicesHook):
         return self.managed_map.accessible_by(user)
 
     def delete_user(self, user, notify_user=False) -> bool:
+        map_name = self.managed_map.name
+        logger.info("Deleting user %s from map %s", user, map_name)
         try:
             self.managed_map.delete_user(user)
+            if notify_user:
+                Notification.objects.notify_user(
+                    user,
+                    _(f"Account removed from {map_name}"),
+                    _(
+                        f"Your characters have been removed from the wanderer map {map_name}"
+                    ),
+                    Notification.Level.WARNING,
+                )
             return True
         except Exception as e:
             logger.error("Couldn't delete the user properly: %s", e)
             return False
+
+    def validate_user(self, user):
+        logger.debug("Validating user %s account on %s", user, self)
+        if self.managed_map.user_has_account(
+            user
+        ) and not self.managed_map.accessible_by(user):
+            logger.info("Removing user %s account on %s", user, self)
+            self.delete_user(user, notify_user=True)
 
 
 def add_del_callback(*args, **kwargs):

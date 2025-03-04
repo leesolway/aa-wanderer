@@ -2,30 +2,33 @@
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect
 from django.utils.translation import gettext_lazy as _
+
+from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import WandererAccount, WandererManagedMap
 from wanderer.tasks import add_alts_to_map
 
-
-@login_required
-@permission_required("wanderer.basic_access")
-def index(request):
-    """Render index view."""
-    context = {"text": "Hello, World!"}
-    return render(request, "wanderer/index.html", context)
+logger = get_extension_logger(__name__)
 
 
 @login_required
 @permission_required("wanderer.basic_access")
 def link(request, map_id: int):
     """Link a new user to a wanderer map"""
-    # FIXME check if the user is allowed to join this map!!
     wanderer_map = get_object_or_404(WandererManagedMap, pk=map_id)
     user = request.user
 
-    if wanderer_map.user_has_account(user):
+    if not wanderer_map.accessible_by(user):
+        messages.warning(request, _("You don't have the access for this map"))
+        logger.warning(
+            "User id %d tried to access map id %d without authorization",
+            user.id,
+            wanderer_map.id,
+        )
+
+    elif wanderer_map.user_has_account(user):
         messages.warning(request, _("You are already linked to this map"))
     else:
         wanderer_user = WandererAccount.objects.create(

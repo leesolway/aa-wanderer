@@ -70,6 +70,11 @@ def remove_user_characters_from_map(
     character_ids_to_remove = characters_on_acl_ids_set & user_character_ids_set
 
     for character_id_to_remove in character_ids_to_remove:
+        logger.debug(
+            "Removing char id %d from map %s",
+            character_id_to_remove,
+            wanderer_managed_map,
+        )
         wanderer_managed_map.remove_member_from_access_list(character_id_to_remove)
 
 
@@ -97,6 +102,7 @@ def cleanup_access_list(wanderer_managed_map_id: int):
     logger.debug(character_ids_to_remove)
     logger.info("Removing %d character ids from the ACL", len(character_ids_to_remove))
     for character_id_to_remove in character_ids_to_remove:
+        logger.debug("Removing char id %d", character_id_to_remove)
         wanderer_managed_map.remove_member_from_access_list(character_id_to_remove)
 
     character_ids_to_add = (
@@ -105,6 +111,7 @@ def cleanup_access_list(wanderer_managed_map_id: int):
     logger.debug(character_ids_to_add)
     logger.info("Adding %d character ids to the ACL", len(character_ids_to_add))
     for character_id_to_add in character_ids_to_add:
+        logger.debug("Adding character id %d", character_id_to_add)
         wanderer_managed_map.add_character_to_acl(character_id_to_add)
 
 

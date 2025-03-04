@@ -106,6 +106,8 @@ class WandererManagedMap(models.Model):
     def accessible_by(self, user: User) -> bool:
         """Defines if a user can access this map or not"""
 
+        logger.debug("Checking if user %s can access the map %s", user, self.name)
+
         if not user.has_perm("wanderer.basic_access"):
             return False
 
@@ -172,10 +174,8 @@ class WandererManagedMap(models.Model):
 
             # filter based on "OR" all queries
             query = queries.pop()
-            logger.debug(query)
             for q in queries:
                 query |= q
-            logger.debug(query)
             return WandererManagedMap.objects.filter(query, id=self.id).exists()
 
         except AssertionError:
