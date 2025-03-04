@@ -15,11 +15,15 @@ class NotFoundError(Exception):
     """Exception raised when the API returned an expected 404"""
 
 
+class OwnerEveIdDoesNotExistError(Exception):
+    """Exception raised when attempting to create a map with an owner not known by Wanderer"""
+
+
 DEFAULT_TIMEOUT = 5
 
 
 def create_acl_associated_to_map(
-    wanderer_url: str, map_slug: str, requesting_character: int, map_api_key: str
+    wanderer_url: str, map_slug: str, requesting_character_id: int, map_api_key: str
 ) -> (str, str):
     """
     Will create a new ACL associated with the map `map_slug`
@@ -31,7 +35,7 @@ def create_acl_associated_to_map(
         "Creating ACL on wanderer %s for map %s by character %d with api key %s",
         wanderer_url,
         map_slug,
-        requesting_character,
+        requesting_character_id,
         map_api_key,
     )
 
@@ -42,13 +46,23 @@ def create_acl_associated_to_map(
             "acl": {
                 "name": f"AA ACL {map_slug}",
                 "description": f"Access list managed by aa-wanderer for the map {map_slug}. Do not manually edit.",
-                "owner_eve_id": str(requesting_character),
+                "owner_eve_id": str(requesting_character_id),
             }
         },
         timeout=DEFAULT_TIMEOUT,
     )
 
     logger.debug("Received status code %d", r.status_code)
+    logger.debug(r.text)
+
+    if (
+        r.status_code == 400
+        and "owner_eve_id does not match any existing character" in r.text
+    ):
+        raise OwnerEveIdDoesNotExistError(
+            f"The eve character with id {requesting_character_id} "
+            "doesn't seem to be known by Wanderer"
+        )
 
     if r.status_code == 401:
         raise BadAPIKeyError(

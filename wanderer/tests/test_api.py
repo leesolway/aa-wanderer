@@ -6,6 +6,7 @@ from django.test import TestCase
 from wanderer.wanderer import (
     BadAPIKeyError,
     NotFoundError,
+    OwnerEveIdDoesNotExistError,
     add_character_to_acl,
     create_acl_associated_to_map,
     get_acl_members,
@@ -267,4 +268,25 @@ class TestApi(TestCase):
             "ACL_UUID",
             "bad-api-key",
             1000,
+        )
+
+    @responses.activate
+    def test_unknown_owner_eve_id(self):
+        """Error will be returned if an unknown owner_eve_id is given when creating an access list"""
+        responses.post(
+            "http://wanderer.localhost/api/map/acls?slug=map_slug",
+            match=[matchers.header_matcher({"Authorization": "Bearer bad-api-key"})],
+            status=400,
+            json={
+                "error": '{:error, "owner_eve_id does not match any existing character"}'
+            },
+        )
+
+        self.assertRaises(
+            OwnerEveIdDoesNotExistError,
+            create_acl_associated_to_map,
+            "http://wanderer.localhost",
+            "map_slug",
+            1001,
+            "bad-api-key",
         )
