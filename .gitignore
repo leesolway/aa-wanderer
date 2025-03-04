@@ -12,3 +12,4 @@ venv/
 .coverage
 coverage.xml
 .tox
+alliance_auth.sqlite3
