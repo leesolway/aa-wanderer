@@ -10,7 +10,7 @@
 {% endblock %}
 
 {% block active %}
-    {% if active %}
+    {% if has_account %}
     	<span class="badge bg-success">{% translate "Active" %}</span>
     {% else %}
         <span class="badge bg-warning">{% translate "Disabled" %}</span>
