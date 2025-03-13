@@ -4,12 +4,13 @@ from responses import matchers
 from django.test import TestCase
 
 from wanderer.wanderer import (
+    AccessListRoles,
     BadAPIKeyError,
     NotFoundError,
     OwnerEveIdDoesNotExistError,
     add_character_to_acl,
     create_acl_associated_to_map,
-    get_acl_members,
+    get_acl_member_ids,
     get_non_member_characters,
     remove_member_from_access_list,
     set_character_to_member,
@@ -131,7 +132,7 @@ class TestApi(TestCase):
             },
         )
 
-        characters_on_acl = get_acl_members(
+        characters_on_acl = get_acl_member_ids(
             "http://wanderer.localhost", "ACL_UUID", "bad-api-key"
         )
 
@@ -197,7 +198,7 @@ class TestApi(TestCase):
             },
         )
 
-        characters_on_acl = get_acl_members(
+        characters_on_acl = get_acl_member_ids(
             "http://wanderer.localhost", "ACL_UUID", "bad-api-key"
         )
 
@@ -353,8 +354,8 @@ class TestApi(TestCase):
             "http://wanderer.localhost", "ACL_UUID", "bad-api-key"
         )
 
-        self.assertIn(2112073677, non_members_ids)
-        self.assertIn(2116461863, non_members_ids)
+        self.assertIn((2112073677, AccessListRoles.MANAGER), non_members_ids)
+        self.assertIn((2116461863, AccessListRoles.ADMIN), non_members_ids)
 
     @responses.activate
     def test_set_character_to_member(self):

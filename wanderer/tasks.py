@@ -5,6 +5,7 @@ from celery import chain, shared_task
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import WandererAccount, WandererManagedMap
+from wanderer.wanderer import AccessListRoles
 
 logger = get_extension_logger(__name__)
 
@@ -114,7 +115,13 @@ def cleanup_access_list(wanderer_managed_map_id: int):
         logger.debug("Adding character id %d", character_id_to_add)
         wanderer_managed_map.add_character_to_acl(character_id_to_add)
 
-    character_ids_to_set_on_member = wanderer_managed_map.get_non_member_character_ids()
+    non_member_characters = wanderer_managed_map.get_non_member_characters()
+    character_ids_to_set_on_member = [
+        non_member_character[0]
+        for non_member_character in non_member_characters
+        if non_member_character[1]
+        not in [AccessListRoles.ADMIN, AccessListRoles.MANAGER, AccessListRoles.MEMBER]
+    ]
     for character_id_to_set_on_member in character_ids_to_set_on_member:
         wanderer_managed_map.set_character_to_member(character_id_to_set_on_member)
 

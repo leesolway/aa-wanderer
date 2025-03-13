@@ -1,10 +1,22 @@
 """Interactions with the wanderer's API"""
 
+import enum
+
 import requests
 
 from allianceauth.services.hooks import get_extension_logger
 
 logger = get_extension_logger(__name__)
+
+
+class AccessListRoles(enum.Enum):
+    """All roles that can be assigned on an access list"""
+
+    ADMIN = "admin"
+    MANAGER = "manager"
+    MEMBER = "member"
+    VIEWER = "viewer"
+    BLOCKED = "-blocked-"
 
 
 class BadAPIKeyError(Exception):
@@ -78,7 +90,7 @@ def create_acl_associated_to_map(
     return acl_id, acl_key
 
 
-def get_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str) -> list[int]:
+def get_acl_member_ids(wanderer_url: str, acl_id: str, acl_api_key: str) -> list[int]:
     """
     Returns all members eve_character_id present in an ACL
     """
@@ -146,9 +158,9 @@ def remove_member_from_access_list(
 
 def get_non_member_characters(
     wanderer_url: str, acl_id: str, acl_api_key: str
-) -> list[int]:
+) -> list[(int, AccessListRoles)]:
     """
-    Return the character_id of characters that have a role different from member
+    Return the character_id and role of characters that have a role different from member
     """
     logger.info(
         "Requesting character on the ACL of map %s / %s without member role",
@@ -159,7 +171,7 @@ def get_non_member_characters(
     r = _get_raw_acl_members(wanderer_url, acl_id, acl_api_key)
 
     return [
-        int(member["eve_character_id"])
+        (int(member["eve_character_id"]), AccessListRoles(member["role"]))
         for member in r.json()["data"]["members"]
         if member["role"] != "member" and member["eve_character_id"]
     ]

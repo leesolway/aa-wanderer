@@ -15,6 +15,8 @@ Currently, I recommend keeping a normal wanderer access list on your map that yo
 You can add your corporation/alliance on this access list to make sure that all mains can easily open your map.
 It also allows you to add another group if needed during a joint op. \
 The application will create another access list that will be fully managed and shouldn't be manually edited.
+The only thing you can change on that access list is moving some characters to admin or manager to keep an overview.
+But even these admin/manager characters will be removed from the access list if they lose access to the service.
 
 ## Installation
 

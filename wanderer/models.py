@@ -19,9 +19,10 @@ from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.managers import WandererManagedMapManager
 from wanderer.wanderer import (
+    AccessListRoles,
     NotFoundError,
     add_character_to_acl,
-    get_acl_members,
+    get_acl_member_ids,
     get_non_member_characters,
     remove_member_from_access_list,
     set_character_to_member,
@@ -209,7 +210,9 @@ class WandererManagedMap(models.Model):
 
     def get_character_ids_on_access_list(self) -> list[int]:
         """Returns all character_ids present on the access list"""
-        return get_acl_members(self.wanderer_url, self.map_acl_id, self.map_acl_api_key)
+        return get_acl_member_ids(
+            self.wanderer_url, self.map_acl_id, self.map_acl_api_key
+        )
 
     def add_character_to_acl(self, character_id: int):
         """Adds a single character to the ACL with the viewer role"""
@@ -237,9 +240,9 @@ class WandererManagedMap(models.Model):
             )
         )
 
-    def get_non_member_character_ids(self) -> list[int]:
+    def get_non_member_characters(self) -> list[(int, AccessListRoles)]:
         """
-        Return a list of all character ids that are not set as members
+        Return a list of all character ids and roles that are not set as members
         """
         return get_non_member_characters(
             self.wanderer_url, self.map_acl_id, self.map_acl_api_key

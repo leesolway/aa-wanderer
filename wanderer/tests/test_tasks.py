@@ -11,6 +11,7 @@ from wanderer.tasks import (
     remove_user_characters_from_map,
 )
 
+from ..wanderer import AccessListRoles
 from .utils import create_managed_map, create_wanderer_users
 
 
@@ -61,8 +62,11 @@ class TestTasks(TestCase):
         )
         WandererManagedMap.remove_member_from_access_list = MagicMock()
         WandererManagedMap.add_character_to_acl = MagicMock()
-        WandererManagedMap.get_non_member_character_ids = MagicMock(
-            return_value=[1030, 1031]
+        WandererManagedMap.get_non_member_characters = MagicMock(
+            return_value=[
+                (1030, AccessListRoles.VIEWER),
+                (1031, AccessListRoles.BLOCKED),
+            ]
         )
         WandererManagedMap.set_character_to_member = MagicMock()
 
@@ -77,8 +81,40 @@ class TestTasks(TestCase):
         WandererManagedMap.add_character_to_acl.assert_has_calls(
             add_character_calls, any_order=True
         )
-        WandererManagedMap.get_non_member_character_ids.assert_called_once()
+        WandererManagedMap.get_non_member_characters.assert_called_once()
         set_character_to_member_calls = [call(1030), call(1031)]
         WandererManagedMap.set_character_to_member.assert_has_calls(
             set_character_to_member_calls, any_order=True
         )
+
+    def test_dont_cleanup_access_list(self):
+        """Test where the access list is correct and has different roles than member"""
+        WandererManagedMap.get_character_ids_on_access_list = MagicMock(
+            return_value=[1000, 1001, 1010, 1011]
+        )
+        WandererManagedMap.get_all_accounts_characters_ids = MagicMock(
+            return_value=[1000, 1001, 1010, 1011]
+        )
+        WandererManagedMap.add_character_to_acl = MagicMock()
+        WandererManagedMap.remove_member_from_access_list = MagicMock()
+        WandererManagedMap.get_non_member_characters = MagicMock(
+            return_value=[
+                (1000, AccessListRoles.ADMIN),
+                (1001, AccessListRoles.MANAGER),
+                (1010, AccessListRoles.MEMBER),
+                (1011, AccessListRoles.MEMBER),
+            ]
+        )
+        WandererManagedMap.set_character_to_member = MagicMock()
+
+        wanderer_map = create_managed_map()
+        create_wanderer_users(wanderer_map, 2)
+
+        cleanup_access_list(wanderer_map.id)
+
+        WandererManagedMap.get_character_ids_on_access_list.assert_called_once()
+        WandererManagedMap.get_all_accounts_characters_ids.assert_called_once()
+        WandererManagedMap.add_character_to_acl.assert_not_called()
+        WandererManagedMap.remove_member_from_access_list.assert_not_called()
+        WandererManagedMap.get_non_member_characters.assert_called_once()
+        WandererManagedMap.set_character_to_member.assert_not_called()
