@@ -1,35 +1,31 @@
 {% extends "services/services_ctrl_base.html" %}
 {% load i18n %}
-
-{% block title %}
-    {{ title }}
-{% endblock %}
-
-{% block url %}
-	<a href="{{ url }}" target="_blank">{{ url }}</a>
-{% endblock %}
-
+{% block title %}{{ title }}{% endblock %}
+{% block url %}<a href="{{ url }}" target="_blank">{{ url }}</a>{% endblock %}
 {% block active %}
     {% if has_account %}
-    	<span class="badge bg-success">{% translate "Active" %}</span>
+        <span class="badge bg-success">{% translate "Active" %}</span>
     {% else %}
         <span class="badge bg-warning">{% translate "Disabled" %}</span>
     {% endif %}
 {% endblock %}
-
-{% block user %}
-{% endblock %}
-
+{% block user %}{% endblock %}
 {% block controls %}
     {% if has_account %}
-        <a href="{% url "wanderer:sync" map_id %}" title="{% translate 'Update your characters on the ACL' %}" class="btn btn-primary">
+        <a href="{% url "wanderer:sync" map_id %}"
+           title="{% translate 'Update your characters on the ACL' %}"
+           class="btn btn-primary">
             <span class="fas fa-sync fa-fw"></span>
         </a>
-        <a href="{% url "wanderer:remove" map_id %}" title="{% translate 'Unlink your characters from the map ACL' %}" class="btn btn-danger">
+        <a href="{% url "wanderer:remove" map_id %}"
+           title="{% translate 'Unlink your characters from the map ACL' %}"
+           class="btn btn-danger">
             <span class="fas fa-times fa-fw"></span>
         </a>
     {% else %}
-        <a href="{% url "wanderer:link" map_id %}" title="{% translate 'Link your characters to the map ACL' %}" class="btn btn-primary">
+        <a href="{% url "wanderer:link" map_id %}"
+           title="{% translate 'Link your characters to the map ACL' %}"
+           class="btn btn-primary">
             <span class="fas fa-check fa-fw"></span>
         </a>
     {% endif %}
