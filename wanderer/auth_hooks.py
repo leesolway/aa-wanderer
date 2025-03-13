@@ -14,10 +14,10 @@ from django.utils.translation import gettext_lazy as _
 
 from allianceauth import hooks
 from allianceauth.notifications.models import Notification
-from allianceauth.services.hooks import ServicesHook, get_extension_logger
+from allianceauth.services.hooks import ServicesHook, UrlHook, get_extension_logger
 
+from . import urls
 from .models import WandererManagedMap
-from .urls import urlpatterns
 
 logger = get_extension_logger(__name__)
 
@@ -31,7 +31,6 @@ class WandererManagedMapService(ServicesHook):
 
     def __init__(self):
         ServicesHook.__init__(self)
-        self.urlpatterns = urlpatterns
         self.access_perm = "wanderer.basic_access"
 
         self.name = f"wmm:{self.managed_map.wanderer_url}/{self.managed_map.map_slug}"
@@ -121,3 +120,8 @@ def add_del_callback(*args, **kwargs):
 
 post_save.connect(add_del_callback, sender=WandererManagedMap)
 post_delete.connect(add_del_callback, sender=WandererManagedMap)
+
+
+@hooks.register("url_hook")
+def register_urls():
+    return UrlHook(urls, "wanderer", r"^wanderer/")
