@@ -11,6 +11,9 @@ pre-commit:
   cache:
     paths:
       - ${PRE_COMMIT_HOME}
+  before_script:
+    - apt-get update
+    - apt-get install gettext -y
   script:
     - pip install pre-commit
     - pre-commit run --all-files

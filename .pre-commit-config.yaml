@@ -34,3 +34,9 @@ repos:
     rev: v1.36.4
     hooks:
       - id: djlint-reformat-django
+  - repo: https://gitlab.com/r0kym/django-admin-pre-commit
+    rev: "v0.1.1"
+    hooks:
+      - id: makemessages
+        args:
+          - -l=en

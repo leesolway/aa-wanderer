@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-03-04 18:55+0100\n"
+"POT-Creation-Date: 2025-03-14 00:39+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -23,109 +23,109 @@ msgstr ""
 msgid "Account removed from {map_name}"
 msgstr ""
 
-#: wanderer/auth_hooks.py:63
+#: wanderer/auth_hooks.py:64
 #, python-brace-format
 msgid "Your characters have been removed from the wanderer map {map_name}"
 msgstr ""
 
-#: wanderer/models.py:47
+#: wanderer/models.py:50
 msgid "User friendly name for your users to recognize the map"
 msgstr ""
 
-#: wanderer/models.py:50
+#: wanderer/models.py:53
 msgid "URL of the wanderer instance"
 msgstr ""
 
-#: wanderer/models.py:53
+#: wanderer/models.py:56
 msgid "Map slug on the wanderer instance"
 msgstr ""
 
-#: wanderer/models.py:55
+#: wanderer/models.py:58
 msgid "API key of the map"
 msgstr ""
 
-#: wanderer/models.py:58
+#: wanderer/models.py:61
 msgid "ID of the managed access list"
 msgstr ""
 
-#: wanderer/models.py:61
+#: wanderer/models.py:64
 msgid "API key of the managed access list"
 msgstr ""
 
-#: wanderer/models.py:65
+#: wanderer/models.py:68
 msgid "States to whose members this map is available."
 msgstr ""
 
-#: wanderer/models.py:69
+#: wanderer/models.py:72
 msgid "Groups to whose members this map is available."
 msgstr ""
 
-#: wanderer/models.py:75
+#: wanderer/models.py:78
 msgid "Characters to which this map is available."
 msgstr ""
 
-#: wanderer/models.py:81
+#: wanderer/models.py:84
 msgid "Corporations to whose members this map is available."
 msgstr ""
 
-#: wanderer/models.py:87
+#: wanderer/models.py:90
 msgid "Alliances to whose members this map is available."
 msgstr ""
 
-#: wanderer/models.py:93
+#: wanderer/models.py:96
 msgid "Factions to whose members this map is available."
 msgstr ""
 
-#: wanderer/models.py:243
+#: wanderer/models.py:264
 msgid "Auth user linked to the map"
 msgstr ""
 
-#: wanderer/models.py:250
+#: wanderer/models.py:271
 msgid "Wanderer map to which the user is linked"
 msgstr ""
 
-#: wanderer/templates/wanderer/wmm_services_ctrl.html:14
+#: wanderer/templates/wanderer/wmm_services_ctrl.html:7
 msgid "Active"
 msgstr ""
 
-#: wanderer/templates/wanderer/wmm_services_ctrl.html:16
+#: wanderer/templates/wanderer/wmm_services_ctrl.html:9
 msgid "Disabled"
 msgstr ""
 
-#: wanderer/templates/wanderer/wmm_services_ctrl.html:25
+#: wanderer/templates/wanderer/wmm_services_ctrl.html:16
 msgid "Update your characters on the ACL"
 msgstr ""
 
-#: wanderer/templates/wanderer/wmm_services_ctrl.html:28
+#: wanderer/templates/wanderer/wmm_services_ctrl.html:21
 msgid "Unlink your characters from the map ACL"
 msgstr ""
 
-#: wanderer/templates/wanderer/wmm_services_ctrl.html:32
+#: wanderer/templates/wanderer/wmm_services_ctrl.html:27
 msgid "Link your characters to the map ACL"
 msgstr ""
 
-#: wanderer/views.py:22
+#: wanderer/views.py:24
 msgid "You don't have the access for this map"
 msgstr ""
 
-#: wanderer/views.py:26
+#: wanderer/views.py:32
 msgid "You are already linked to this map"
 msgstr ""
 
-#: wanderer/views.py:35
+#: wanderer/views.py:41
 msgid ""
 "Successfully linked your account to this map. Character update starting now."
 msgstr ""
 
-#: wanderer/views.py:51
+#: wanderer/views.py:57
 msgid "Updating your characters with the map."
 msgstr ""
 
-#: wanderer/views.py:64
+#: wanderer/views.py:70
 msgid "You don't seem to be linked to this map."
 msgstr ""
 
-#: wanderer/views.py:69
+#: wanderer/views.py:75
 #, python-format
 msgid "Successfully removed you from the map %s"
 msgstr ""
