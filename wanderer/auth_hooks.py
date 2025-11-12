@@ -48,7 +48,7 @@ class WandererManagedMapService(ServicesHook):
             },
         )
 
-    def show_service_ctrl(self, user):
+    def service_active_for_user(self, user):
         return self.managed_map.accessible_by(user)
 
     def delete_user(self, user, notify_user=False) -> bool:
