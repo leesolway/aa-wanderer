@@ -3,11 +3,12 @@ from responses import matchers
 
 from django.test import TestCase
 
+from wanderer.utils.req import BadAPIKeyError
 from wanderer.wanderer import (
     AccessListRoles,
-    BadAPIKeyError,
     NotFoundError,
     OwnerEveIdDoesNotExistError,
+    _get_raw_acl_members,
     add_character_to_acl,
     create_acl_associated_to_map,
     get_acl_member_ids,
@@ -369,4 +370,24 @@ class TestApi(TestCase):
 
         set_character_to_member(
             "http://wanderer.localhost", "ACL_UUID", "bad-api-key", 1001
+        )
+
+    @responses.activate
+    def test_get_raw_acl_wrong_key_raises(self):
+        responses.get(
+            "http://wanderer.localhost/api/acls/ACL_UUID",
+            match=[
+                matchers.header_matcher(
+                    {"Authorization": "Bearer unauthorized-api-key"}
+                ),
+            ],
+            status=401,
+        )
+
+        self.assertRaises(
+            BadAPIKeyError,
+            _get_raw_acl_members,
+            "http://wanderer.localhost",
+            "ACL_UUID",
+            "unauthorized-api-key",
         )
