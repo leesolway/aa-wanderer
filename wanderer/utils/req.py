@@ -28,7 +28,7 @@ def request(
     Sends a request of method type to a wanderer instance
     """
     logger.debug(
-        "Sending %s request to %s / %s with json %s and bearer token",
+        "Sending %s request to %s / %s with json %s and bearer token %s",
         method,
         wanderer_base_url,
         url_path,
