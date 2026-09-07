@@ -1,12 +1,14 @@
 """Views."""
 
 import json
+from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from eve_sde.models import SolarSystem
@@ -14,33 +16,26 @@ from eve_sde.models import SolarSystem
 from allianceauth.eveonline.models import EveAllianceInfo, EveCorporationInfo
 from allianceauth.services.hooks import get_extension_logger
 
-from wanderer.models import MapStructure, StructureFilterPreset, WandererAccount, WandererManagedMap
+from wanderer.models import (
+    Structure,
+    StructureFilterPreset,
+    WandererAccount,
+    WandererManagedMap,
+)
 from wanderer.tasks import add_alts_to_map, sync_all_map_structures
 
 logger = get_extension_logger(__name__)
 
 
-@login_required
-@permission_required("wanderer.basic_access")
-def structures(request):
-    """Display synced map structures with optional filtering."""
+def _structure_filters(request) -> tuple[list[str], list[str], list[str]]:
     system_ids = [v for v in request.GET.getlist("system_id") if v.strip()]
     corp_ids = [v for v in request.GET.getlist("corp_id") if v.strip()]
     alliance_ids = [v for v in request.GET.getlist("alliance_id") if v.strip()]
+    return system_ids, corp_ids, alliance_ids
 
-    qs = MapStructure.objects.select_related("map", "solar_system").filter(map__sync_structures=True)
 
-    if system_ids or corp_ids or alliance_ids:
-        q = Q()
-        if system_ids:
-            q |= Q(solar_system__id__in=system_ids)
-        if corp_ids:
-            q |= Q(owner_id__in=corp_ids)
-        if alliance_ids:
-            q |= Q(alliance_id__in=alliance_ids)
-        qs = qs.filter(q)
-
-    # Pre-populate Tom Select option labels for the selected IDs
+def _selected_filter_labels(system_ids, corp_ids, alliance_ids):
+    """Pre-populate Tom Select option labels for filter values already in the URL."""
     selected_systems = []
     if system_ids:
         selected_systems = list(
@@ -55,7 +50,7 @@ def structures(request):
             if cid not in seen:
                 seen.add(cid)
                 selected_corps.append({"owner_id": cid, "owner_name": c.corporation_name, "owner_ticker": c.corporation_ticker})
-        for row in MapStructure.objects.filter(owner_id__in=corp_ids).values("owner_id", "owner_name", "owner_ticker"):
+        for row in Structure.objects.filter(owner_id__in=corp_ids).values("owner_id", "owner_name", "owner_ticker").distinct():
             if row["owner_id"] not in seen:
                 seen.add(row["owner_id"])
                 selected_corps.append(row)
@@ -68,19 +63,88 @@ def structures(request):
             if aid not in seen:
                 seen.add(aid)
                 selected_alliances.append({"alliance_id": aid, "alliance_name": a.alliance_name, "alliance_ticker": a.alliance_ticker})
-        for row in MapStructure.objects.filter(alliance_id__in=alliance_ids).values("alliance_id", "alliance_name", "alliance_ticker"):
+        for row in Structure.objects.filter(alliance_id__in=alliance_ids).values("alliance_id", "alliance_name", "alliance_ticker").distinct():
             if row["alliance_id"] not in seen:
                 seen.add(row["alliance_id"])
                 selected_alliances.append(row)
 
+    return selected_systems, selected_corps, selected_alliances
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def structures(request):
+    """List solar systems that have at least one currently-active structure."""
+    system_ids, corp_ids, alliance_ids = _structure_filters(request)
+
+    qs = Structure.objects.filter(is_active=True).select_related("solar_system")
+
+    if system_ids or corp_ids or alliance_ids:
+        q = Q()
+        if system_ids:
+            q |= Q(solar_system__id__in=system_ids)
+        if corp_ids:
+            q |= Q(owner_id__in=corp_ids)
+        if alliance_ids:
+            q |= Q(alliance_id__in=alliance_ids)
+        qs = qs.filter(q)
+
+    systems_by_id = {}
+    for s in qs:
+        system = systems_by_id.setdefault(
+            s.solar_system_id,
+            {
+                "solar_system": s.solar_system,
+                "structure_count": 0,
+                "corporations": {},
+                "alliances": {},
+                "last_updated": None,
+            },
+        )
+        system["structure_count"] += 1
+        if s.owner_id:
+            system["corporations"][s.owner_id] = {
+                "owner_id": s.owner_id,
+                "owner_name": s.owner_name,
+                "owner_ticker": s.owner_ticker,
+            }
+        if s.alliance_id:
+            system["alliances"][s.alliance_id] = {
+                "alliance_id": s.alliance_id,
+                "alliance_name": s.alliance_name,
+                "alliance_ticker": s.alliance_ticker,
+            }
+        if s.last_seen_at and (
+            system["last_updated"] is None or s.last_seen_at > system["last_updated"]
+        ):
+            system["last_updated"] = s.last_seen_at
+
+    systems = []
+    for system in systems_by_id.values():
+        system["corporations"] = sorted(
+            system["corporations"].values(), key=lambda c: c["owner_name"]
+        )
+        system["alliances"] = sorted(
+            system["alliances"].values(), key=lambda a: a["alliance_name"]
+        )
+        systems.append(system)
+
+    # Most recently updated system first. A missing last_updated shouldn't happen
+    # (reconcile_structures always sets it) but sorts to the bottom rather than
+    # blowing up the comparison if it ever does.
+    never_updated = timezone.now() - timedelta(days=36500)
+    systems.sort(key=lambda system: system["last_updated"] or never_updated, reverse=True)
+
+    selected_systems, selected_corps, selected_alliances = _selected_filter_labels(
+        system_ids, corp_ids, alliance_ids
+    )
     presets = list(StructureFilterPreset.objects.values("id", "name", "solar_system_ids", "corporation_ids", "alliance_ids", "created_by_id"))
 
     return render(
         request,
         "wanderer/structures.html",
         {
-            "active_structures": qs.filter(is_active=True),
-            "inactive_structures": qs.filter(is_active=False).order_by("-removed_at"),
+            "systems": systems,
             "system_ids": system_ids,
             "corp_ids": corp_ids,
             "alliance_ids": alliance_ids,
@@ -90,6 +154,56 @@ def structures(request):
             "active_filters": bool(system_ids or corp_ids or alliance_ids),
             "presets": presets,
         },
+    )
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def system_detail(request, solar_system_id: int):
+    """Show every currently-tracked structure (active and previously-seen) in one solar system."""
+    solar_system = get_object_or_404(SolarSystem, pk=solar_system_id)
+    qs = Structure.objects.filter(solar_system=solar_system).select_related(
+        "last_source_map"
+    )
+
+    return render(
+        request,
+        "wanderer/system_detail.html",
+        {
+            "solar_system": solar_system,
+            "active_structures": qs.filter(is_active=True).order_by("name"),
+            "inactive_structures": qs.filter(is_active=False).order_by("-removed_at"),
+        },
+    )
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def structure_history(request, solar_system_id: int, structure_id: int):
+    """Return a structure's change history as JSON, for the history modal."""
+    structure = get_object_or_404(
+        Structure, pk=structure_id, solar_system_id=solar_system_id
+    )
+    entries = [
+        {
+            "recorded_at": entry.recorded_at.isoformat(),
+            "change_type": entry.get_change_type_display(),
+            "changed_fields": entry.changed_fields,
+            "owner_name": entry.owner_name,
+            "owner_ticker": entry.owner_ticker,
+            "alliance_name": entry.alliance_name,
+            "alliance_ticker": entry.alliance_ticker,
+            "status": entry.status,
+            "name": entry.name,
+        }
+        for entry in structure.history.all()
+    ]
+    return JsonResponse(
+        {
+            "structure_name": structure.name,
+            "is_active": structure.is_active,
+            "entries": entries,
+        }
     )
 
 
@@ -123,9 +237,9 @@ def autocomplete_corporations(request):
         for c in corps
     ]
 
-    # Supplement with MapStructure data for corps not in EveCorporationInfo
+    # Supplement with Structure data for corps not in EveCorporationInfo
     if len(results) < 20:
-        struct_qs = MapStructure.objects.exclude(owner_id="").exclude(owner_name="")
+        struct_qs = Structure.objects.exclude(owner_id="").exclude(owner_name="")
         if q:
             struct_qs = struct_qs.filter(Q(owner_name__icontains=q) | Q(owner_ticker__icontains=q))
         for row in struct_qs.values("owner_id", "owner_name", "owner_ticker").distinct().order_by("owner_name"):
@@ -157,9 +271,9 @@ def autocomplete_alliances(request):
         for a in alliances
     ]
 
-    # Supplement with MapStructure data for alliances not in EveAllianceInfo
+    # Supplement with Structure data for alliances not in EveAllianceInfo
     if len(results) < 20:
-        struct_qs = MapStructure.objects.exclude(alliance_id="").exclude(alliance_name="")
+        struct_qs = Structure.objects.exclude(alliance_id="").exclude(alliance_name="")
         if q:
             struct_qs = struct_qs.filter(Q(alliance_name__icontains=q) | Q(alliance_ticker__icontains=q))
         for row in struct_qs.values("alliance_id", "alliance_name", "alliance_ticker").distinct().order_by("alliance_name"):

@@ -1,7 +1,7 @@
 """Tasks."""
 
 import requests as http_requests
-from celery import chain, group, shared_task
+from celery import chain, shared_task
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -9,6 +9,7 @@ from allianceauth.services.hooks import get_extension_logger
 from eve_sde.models import SolarSystem
 
 from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
+from wanderer.structures import reconcile_structures
 from wanderer.wanderer import AccessListRoles, get_map_structures
 
 ESI_BASE = "https://esi.evetech.net/latest"
@@ -156,9 +157,20 @@ def sync_map_structures(wanderer_managed_map_id: int):
     logger.info("Syncing structures for map id %d", wanderer_managed_map_id)
 
     wanderer_map = WandererManagedMap.objects.get(pk=wanderer_managed_map_id)
-    structures = get_map_structures(
-        wanderer_map.wanderer_url, wanderer_map.map_slug, wanderer_map.map_api_key
-    )
+    try:
+        structures = get_map_structures(
+            wanderer_map.wanderer_url, wanderer_map.map_slug, wanderer_map.map_api_key
+        )
+    except Exception:
+        # Deliberately swallowed rather than re-raised: sync_all_map_structures
+        # calls this function directly, in a loop, for every enabled map. One map
+        # being unreachable must not abort that loop and skip both the remaining
+        # maps and the reconciliation pass that runs after it.
+        logger.exception(
+            "Failed to fetch structures for map id %d, skipping this sync",
+            wanderer_managed_map_id,
+        )
+        return
 
     seen_ids = set()
     failed = 0
@@ -176,6 +188,11 @@ def sync_map_structures(wanderer_managed_map_id: int):
 
             raw_inserted_at = s.get("inserted_at")
             inserted_at = parse_datetime(raw_inserted_at) if raw_inserted_at else None
+
+            raw_updated_at = s.get("updated_at")
+            structure_updated_at = (
+                parse_datetime(raw_updated_at) if raw_updated_at else None
+            )
 
             solar_system_id = s.get("solar_system_id")
             solar_system = None
@@ -204,6 +221,7 @@ def sync_map_structures(wanderer_managed_map_id: int):
                     "end_time": s.get("end_time"),
                     "notes": s.get("notes") or "",
                     "inserted_at": inserted_at,
+                    "structure_updated_at": structure_updated_at,
                     "is_active": True,
                     "removed_at": None,
                 },
@@ -238,14 +256,39 @@ def sync_map_structures(wanderer_managed_map_id: int):
 
 
 @shared_task
+def reconcile_all_structures():
+    """
+    Rebuilds the deduplicated Structure/StructureHistory tables from the latest
+    per-map sync data. Kept as its own task so it can be triggered on its own
+    (e.g. from a shell) without re-syncing every map first.
+    """
+    logger.info("Reconciling structures across all maps")
+    reconcile_structures()
+
+
+@shared_task
 def sync_all_map_structures():
-    """Hourly task: sync structures for all maps that have sync enabled."""
+    """Hourly task: sync structures for all maps that have sync enabled, then
+    reconcile the per-map results into the deduplicated Structure table.
+
+    Runs each map's sync synchronously (a plain call, not .delay()/.si()) and
+    reconciles afterwards, all within this one task - deliberately NOT a Celery
+    chord/group. This project has no CELERY_RESULT_BACKEND configured, and a
+    chord's callback depends entirely on the result backend to know when the
+    header group has finished; without one it raises NotImplementedError as soon
+    as it's set up. The header tasks still get dispatched before that happens, so
+    MapStructure kept looking freshly-synced while reconciliation silently never
+    ran again after the first success - exactly the "API has fresh data, our
+    Structure rows don't" bug this replaces. sync_map_structures already swallows
+    its own errors (see its try/except around get_map_structures and the
+    per-structure loop), so one map failing here still can't stop the others or
+    skip reconciliation.
+    """
     maps = WandererManagedMap.objects.filter(sync_structures=True)
     logger.info("%d maps with structure sync enabled", maps.count())
-    tasks = [sync_map_structures.si(m.id) for m in maps]
-    if tasks:
-        # group, not chain: one map failing must not skip the rest
-        group(tasks).delay()
+    for wanderer_map in maps:
+        sync_map_structures(wanderer_map.id)
+    reconcile_structures()
 
 
 @shared_task

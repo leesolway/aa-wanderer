@@ -9,6 +9,12 @@ app_name = "wanderer"
 urlpatterns = [
     path("structures/", views.structures, name="structures"),
     path("structures/force-sync/", views.force_sync_structures, name="force_sync_structures"),
+    path("structures/system/<int:solar_system_id>/", views.system_detail, name="system_detail"),
+    path(
+        "structures/system/<int:solar_system_id>/structure/<int:structure_id>/history/",
+        views.structure_history,
+        name="structure_history",
+    ),
     path("structures/presets/save/", views.preset_save, name="preset_save"),
     path("structures/presets/<int:preset_id>/delete/", views.preset_delete, name="preset_delete"),
     path("autocomplete/solar-systems/", views.autocomplete_solar_systems, name="autocomplete_solar_systems"),

@@ -23,6 +23,7 @@ def request(
     url_path: str,
     json: dict | None = None,
     bearer_token: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> Response:
     """
     Sends a request of method type to a wanderer instance
@@ -43,7 +44,7 @@ def request(
         f"{wanderer_base_url}/api/{url_path}",
         json=json,
         headers=headers,
-        timeout=DEFAULT_TIMEOUT,
+        timeout=timeout,
     )
 
     logger.debug("received code %d with text %s", r.status_code, r.text)
@@ -59,11 +60,14 @@ def get(
     *,
     json: dict | None = None,
     bearer_token: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> Response:
     """
     Sends a GET request to a wanderer instance
     """
-    return request("GET", wanderer_base_url, url_path, json, bearer_token)
+    return request(
+        "GET", wanderer_base_url, url_path, json, bearer_token, timeout=timeout
+    )
 
 
 def post(

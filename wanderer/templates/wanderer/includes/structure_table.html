@@ -1,60 +1,83 @@
-{% load i18n %}
+{% load i18n wanderer_tags %}
 <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">{{ title }}</h5>
+        <span class="badge {% if show_removed %}bg-secondary{% else %}bg-primary{% endif %}">
+            {{ structures|length }} {% translate "structures" %}
+        </span>
+    </div>
     <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>{% translate "Solar System" %}</th>
-                    <th>{% translate "Name" %}</th>
-                    <th>{% translate "Type" %}</th>
-                    <th>{% translate "Corporation" %}</th>
-                    <th>{% translate "Alliance" %}</th>
-                    <th>{% translate "Added" %}</th>
-                    {% if show_removed %}<th>{% translate "Removed" %}</th>{% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for structure in structures %}
-                    <tr data-notes="{{ structure.notes|default:'' }}"
-                        data-name="{{ structure.name }}"
-                        onclick="showNotes(this)"
-                        {% if show_removed %}class="text-muted"{% endif %}>
-                        <td>{{ structure.solar_system.name|default:"—" }}</td>
-                        <td>{{ structure.name }}</td>
-                        <td>{{ structure.structure_type }}</td>
-                        <td>
-                            {% if structure.owner_id %}
-                                <a href="https://zkillboard.com/corporation/{{ structure.owner_id }}/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                    {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
-                                </a>
-                            {% else %}
-                                {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if structure.alliance_id %}
-                                <a href="https://zkillboard.com/alliance/{{ structure.alliance_id }}/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                    {{ structure.alliance_name }}{% if structure.alliance_ticker %} <span class="text-muted">[{{ structure.alliance_ticker }}]</span>{% endif %}
-                                </a>
-                            {% elif structure.alliance_name %}
-                                {{ structure.alliance_name }}
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if structure.inserted_at %}
-                                {{ structure.inserted_at|date:"Y-m-d" }}
-                            {% else %}
-                                <span class="text-muted">—</span>
-                            {% endif %}
-                        </td>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped mb-0">
+                <thead class="table-dark">
+                    <tr>
+                        <th>{% translate "Name" %}</th>
+                        <th>{% translate "Type" %}</th>
+                        <th>{% translate "Corporation" %}</th>
+                        <th>{% translate "Alliance" %}</th>
+                        <th>{% translate "Status" %}</th>
+                        <th>{% translate "Source Map" %}</th>
                         {% if show_removed %}
-                            <td>{{ structure.removed_at|date:"Y-m-d" }}</td>
+                            <th>{% translate "Removed" %}</th>
+                        {% else %}
+                            <th>{% translate "Last Updated" %}</th>
                         {% endif %}
+                        <th>{% translate "History" %}</th>
                     </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                    {% for structure in structures %}
+                        <tr data-notes="{{ structure.notes|default:'' }}"
+                            data-name="{{ structure.name }}"
+                            onclick="showNotes(this)"
+                            {% if show_removed %}class="text-muted"{% endif %}>
+                            <td>{{ structure.name }}</td>
+                            <td>{{ structure.structure_type }}</td>
+                            <td>
+                                {% if structure.owner_id %}
+                                    {% zkillboard_url 'corporation' structure.owner_id as zkill_corp %}
+                                    <a href="{{ zkill_corp }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
+                                        {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
+                                    </a>
+                                {% else %}
+                                    {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if structure.alliance_id %}
+                                    {% zkillboard_url 'alliance' structure.alliance_id as zkill_alliance %}
+                                    <a href="{{ zkill_alliance }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
+                                        {{ structure.alliance_name }}{% if structure.alliance_ticker %} <span class="text-muted">[{{ structure.alliance_ticker }}]</span>{% endif %}
+                                    </a>
+                                {% elif structure.alliance_name %}
+                                    {{ structure.alliance_name }}
+                                {% else %}
+                                    <span class="text-muted">&mdash;</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ structure.status|default:"—" }}</td>
+                            <td>
+                                {% if structure.last_source_map %}
+                                    {{ structure.last_source_map.name }}
+                                {% else %}
+                                    <span class="text-muted">&mdash;</span>
+                                {% endif %}
+                            </td>
+                            {% if show_removed %}
+                                <td>{{ structure.removed_at|date:"Y-m-d H:i" }}</td>
+                            {% else %}
+                                <td>{{ structure.last_seen_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                            {% endif %}
+                            <td>
+                                <button type="button" class="btn btn-secondary btn-sm"
+                                        onclick="event.stopPropagation(); showHistory({{ structure.id }}, '{{ structure.name|escapejs }}')">
+                                    <i class="fas fa-history fa-fw"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>

@@ -1,0 +1,115 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n wanderer_tags %}
+
+{% block page_title %}{{ solar_system.name }}{% endblock page_title %}
+{% block header_nav_brand %}{{ solar_system.name }}{% endblock header_nav_brand %}
+
+{% block content %}
+{% zkillboard_url 'system' solar_system.id as zkill_system %}
+<div class="container-fluid mt-3">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <a href="{% url 'wanderer:structures' %}" class="btn btn-sm btn-secondary">
+            <i class="fa-solid fa-arrow-left"></i> {% translate "Back to Solar Systems" %}
+        </a>
+        <h4 class="mb-0">
+            {{ solar_system.name }}
+            <a href="{{ zkill_system }}" target="_blank" rel="noopener noreferrer" class="small text-muted ms-1" title="{% translate 'zKillboard' %}">
+                <i class="fas fa-external-link-alt"></i>
+            </a>
+        </h4>
+    </div>
+
+    {% if active_structures %}
+        {% translate "Active Structures" as active_title %}
+        {% include "wanderer/includes/structure_table.html" with structures=active_structures show_removed=False title=active_title %}
+    {% else %}
+        <div class="alert alert-warning text-center">
+            {% translate "No active structures in this system." %}
+        </div>
+    {% endif %}
+
+    {% if inactive_structures %}
+        {% translate "No Longer Detected" as inactive_title %}
+        <p class="text-muted mb-2">{% translate "These structures were previously tracked in this system but are no longer reported by any map." %}</p>
+        {% include "wanderer/includes/structure_table.html" with structures=inactive_structures show_removed=True title=inactive_title %}
+    {% endif %}
+</div>
+
+<!-- Notes Modal -->
+<div class="modal fade" id="modal-notes" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title fs-5" id="modal-notes-title"></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
+            </div>
+            <div class="modal-body" id="modal-notes-body"></div>
+        </div>
+    </div>
+</div>
+
+<!-- History Modal -->
+<div class="modal fade" id="modal-history" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title fs-5" id="modal-history-title"></div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
+            </div>
+            <div class="modal-body" id="modal-history-body">
+                <div class="text-muted">{% translate "Loading…" %}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}
+
+{% block extra_javascript %}
+<script>
+function showNotes(row) {
+    const notes = row.dataset.notes;
+    const name = row.dataset.name;
+    document.getElementById('modal-notes-title').textContent = name;
+    document.getElementById('modal-notes-body').textContent = notes || '{% translate "No notes." %}';
+    new bootstrap.Modal(document.getElementById('modal-notes')).show();
+}
+
+function showHistory(structureId, structureName) {
+    document.getElementById('modal-history-title').textContent = structureName;
+    const body = document.getElementById('modal-history-body');
+    body.innerHTML = '<div class="text-muted">{% translate "Loading…" %}</div>';
+    new bootstrap.Modal(document.getElementById('modal-history')).show();
+
+    const url = `{% url "wanderer:structure_history" solar_system.id 0 %}`.replace('/0/history/', `/${structureId}/history/`);
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.entries || data.entries.length === 0) {
+                body.innerHTML = '<div class="text-muted">{% translate "No changes recorded yet." %}</div>';
+                return;
+            }
+            const list = document.createElement('ul');
+            list.className = 'list-group list-group-flush';
+            data.entries.forEach(entry => {
+                const item = document.createElement('li');
+                item.className = 'list-group-item';
+                const owner = entry.owner_name ? `${entry.owner_name}${entry.owner_ticker ? ' [' + entry.owner_ticker + ']' : ''}` : '{% translate "Unknown" %}';
+                const alliance = entry.alliance_name ? `${entry.alliance_name}${entry.alliance_ticker ? ' [' + entry.alliance_ticker + ']' : ''}` : '—';
+                const changed = entry.changed_fields && entry.changed_fields.length ? entry.changed_fields.join(', ') : '—';
+                item.innerHTML = `
+                    <div class="d-flex justify-content-between">
+                        <strong>${entry.change_type}</strong>
+                        <span class="text-muted small">${new Date(entry.recorded_at).toLocaleString()}</span>
+                    </div>
+                    <div class="small text-muted">{% translate "Was:" %} ${entry.name} · ${owner} · ${alliance} · ${entry.status || '—'}</div>
+                    <div class="small text-muted">{% translate "Changed fields:" %} ${changed}</div>
+                `;
+                list.appendChild(item);
+            });
+            body.innerHTML = '';
+            body.appendChild(list);
+        })
+        .catch(() => { body.innerHTML = '<div class="text-danger">{% translate "Failed to load history." %}</div>'; });
+}
+</script>
+{% endblock extra_javascript %}

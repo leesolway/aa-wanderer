@@ -2,7 +2,14 @@
 
 from django.contrib import admin
 
-from wanderer.models import MapStructure, StructureFilterPreset, WandererAccount, WandererManagedMap
+from wanderer.models import (
+    MapStructure,
+    Structure,
+    StructureFilterPreset,
+    StructureHistory,
+    WandererAccount,
+    WandererManagedMap,
+)
 from wanderer.wanderer import create_acl_associated_to_map
 
 
@@ -48,6 +55,49 @@ class MapStructureAdmin(admin.ModelAdmin):
     list_filter = ["map", "status", "structure_type"]
     search_fields = ["name", "solar_system__name", "owner_name", "owner_ticker"]
     readonly_fields = [f.name for f in MapStructure._meta.get_fields() if hasattr(f, "name")]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+class StructureHistoryInline(admin.TabularInline):
+    model = StructureHistory
+    extra = 0
+    can_delete = False
+    fields = ["recorded_at", "change_type", "changed_fields", "owner_name", "alliance_name", "status"]
+    readonly_fields = fields
+    ordering = ["-recorded_at"]
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Structure)
+class StructureAdmin(admin.ModelAdmin):
+    list_display = ["name", "structure_type", "solar_system", "owner_name", "owner_ticker", "alliance_name", "status", "is_active", "last_seen_at", "removed_at", "last_source_map"]
+    list_filter = ["is_active", "status", "structure_type"]
+    search_fields = ["name", "solar_system__name", "owner_name", "owner_ticker"]
+    # .fields (not get_fields()) - the latter also returns the reverse "history"
+    # relation from StructureHistory, which isn't a real renderable field here.
+    readonly_fields = [f.name for f in Structure._meta.fields]
+    inlines = [StructureHistoryInline]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(StructureHistory)
+class StructureHistoryAdmin(admin.ModelAdmin):
+    list_display = ["structure", "change_type", "recorded_at", "owner_name", "alliance_name"]
+    list_filter = ["change_type"]
+    search_fields = ["structure__name", "owner_name", "alliance_name"]
+    readonly_fields = [f.name for f in StructureHistory._meta.fields]
 
     def has_add_permission(self, request):
         return False

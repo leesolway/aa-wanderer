@@ -1,6 +1,6 @@
 """Tasks tests"""
 
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from django.test import TestCase
 
@@ -9,6 +9,7 @@ from wanderer.tasks import (
     add_alts_to_map,
     cleanup_access_list,
     remove_user_characters_from_map,
+    sync_all_map_structures,
 )
 
 from ..wanderer import AccessListRoles
@@ -118,3 +119,58 @@ class TestTasks(TestCase):
         WandererManagedMap.remove_member_from_access_list.assert_not_called()
         WandererManagedMap.get_non_member_characters.assert_called_once()
         WandererManagedMap.set_character_to_member.assert_not_called()
+
+
+class TestSyncAllMapStructures(TestCase):
+    """
+    Regression coverage for the "owner changed at the source but our Structure
+    rows never update" bug: sync_all_map_structures used to fan the per-map syncs
+    out through a Celery chord and rely on its callback to run reconciliation.
+    This project has no CELERY_RESULT_BACKEND configured, so the chord callback
+    (reconcile_all_structures) silently never fired - MapStructure kept getting
+    refreshed (the header tasks still ran fine) but nothing ever reconciled it
+    into the Structure rows the UI actually shows.
+
+    sync_all_map_structures must instead call sync_map_structures directly (a
+    plain function call, not .delay()/.si()) for each enabled map, then call
+    reconcile_structures() directly too - no Celery group/chord involved.
+    """
+
+    @patch("wanderer.tasks.reconcile_structures")
+    @patch("wanderer.tasks.sync_map_structures")
+    def test_syncs_each_enabled_map_directly_then_reconciles(
+        self, mock_sync_map_structures, mock_reconcile_structures
+    ):
+        enabled_map = create_managed_map()
+        enabled_map.sync_structures = True
+        enabled_map.save()
+
+        disabled_map = WandererManagedMap.objects.create(
+            wanderer_url="http://wanderer-disabled.localhost",
+            map_slug="test-disabled",
+            map_api_key="bad-map-api-key",
+            map_acl_id="ACL_UUID_DISABLED",
+            map_acl_api_key="bad-acl-api-key",
+            sync_structures=False,
+        )
+
+        sync_all_map_structures()
+
+        # Called directly (not .si()/.delay()) with just the map id - if this
+        # regresses back to a chord/group, the mock itself is never called this
+        # way (only a .si/.delay attribute on it would be), so this fails loudly.
+        mock_sync_map_structures.assert_called_once_with(enabled_map.id)
+        mock_reconcile_structures.assert_called_once()
+
+    @patch("wanderer.tasks.reconcile_structures")
+    @patch("wanderer.tasks.sync_map_structures")
+    def test_reconciles_even_with_no_enabled_maps(
+        self, mock_sync_map_structures, mock_reconcile_structures
+    ):
+        """reconcile_structures must run unconditionally - the old
+        `if tasks: chord(...)` shape skipped reconciliation entirely whenever no
+        map had sync enabled."""
+        sync_all_map_structures()
+
+        mock_sync_map_structures.assert_not_called()
+        mock_reconcile_structures.assert_called_once()

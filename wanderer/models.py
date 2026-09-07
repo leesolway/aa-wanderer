@@ -291,6 +291,15 @@ class MapStructure(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
     inserted_at = models.DateTimeField(null=True, blank=True)
+    structure_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text=_(
+            "The 'updated_at' timestamp reported by Wanderer for this structure, "
+            "used to decide which source map has the freshest data for a structure "
+            "seen on more than one map."
+        ),
+    )
     is_active = models.BooleanField(default=True)
     removed_at = models.DateTimeField(null=True, blank=True)
     last_synced = models.DateTimeField(auto_now=True)
@@ -299,8 +308,131 @@ class MapStructure(models.Model):
         solar_system_name = self.solar_system.name if self.solar_system else ""
         return f"{self.name} ({solar_system_name})"
 
+    def freshness(self):
+        """Best available timestamp for comparing this row's data against another map's."""
+        return self.structure_updated_at or self.inserted_at or self.last_synced
+
     class Meta:
         ordering = ["map__name", "solar_system__name", "name"]
+
+
+# Fields tracked on Structure that get diffed/snapshotted by the reconciliation
+# process in wanderer/structures.py. Order matters for StructureHistory display.
+STRUCTURE_TRACKED_FIELDS = [
+    "name",
+    "structure_type",
+    "structure_type_id",
+    "owner_name",
+    "owner_ticker",
+    "owner_id",
+    "alliance_name",
+    "alliance_ticker",
+    "alliance_id",
+    "status",
+    "end_time",
+    "notes",
+]
+
+
+class Structure(models.Model):
+    """
+    A real-world structure, deduplicated across every source map.
+
+    Reconciled from MapStructure rows keyed on (solar_system, name, structure_type_id) -
+    Wanderer's own structure id is only unique within a single map, so it can't be used
+    to recognize the same structure reported by two different maps. See
+    wanderer.structures.reconcile_structures().
+    """
+
+    solar_system = models.ForeignKey(
+        "eve_sde.SolarSystem",
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
+    name = models.CharField(max_length=255)
+    structure_type = models.CharField(max_length=100, blank=True)
+    structure_type_id = models.CharField(max_length=50, blank=True)
+
+    owner_name = models.CharField(max_length=255, blank=True)
+    owner_ticker = models.CharField(max_length=10, blank=True)
+    owner_id = models.CharField(max_length=50, blank=True)
+    alliance_name = models.CharField(max_length=255, blank=True)
+    alliance_ticker = models.CharField(max_length=10, blank=True)
+    alliance_id = models.CharField(max_length=50, blank=True)
+    status = models.CharField(max_length=50, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    first_seen_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
+
+    last_source_map = models.ForeignKey(
+        WandererManagedMap,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text=_(
+            "Map that most recently supplied this structure's data. Kept for "
+            "admin/debugging only - not shown to end users, who shouldn't need to "
+            "care which map a structure was seen on."
+        ),
+    )
+
+    def __str__(self):
+        return f"{self.name} ({self.solar_system.name})"
+
+    class Meta:
+        ordering = ["solar_system__name", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["solar_system", "name", "structure_type_id"],
+                name="functional_pk_structure_identity",
+            )
+        ]
+
+
+class StructureHistory(models.Model):
+    """
+    An archived snapshot of a Structure's fields, recorded right before they
+    changed (or right before the structure was marked removed).
+    """
+
+    class ChangeType(models.TextChoices):
+        CREATED = "created", _("Created")
+        UPDATED = "updated", _("Updated")
+        REMOVED = "removed", _("Removed")
+        REAPPEARED = "reappeared", _("Reappeared")
+
+    structure = models.ForeignKey(
+        Structure, on_delete=models.CASCADE, related_name="history"
+    )
+    recorded_at = models.DateTimeField(auto_now_add=True)
+    change_type = models.CharField(max_length=20, choices=ChangeType.choices)
+    changed_fields = models.JSONField(default=list, blank=True)
+
+    # Snapshot of the structure's data fields as they were right before this change.
+    name = models.CharField(max_length=255, blank=True)
+    structure_type = models.CharField(max_length=100, blank=True)
+    structure_type_id = models.CharField(max_length=50, blank=True)
+    owner_name = models.CharField(max_length=255, blank=True)
+    owner_ticker = models.CharField(max_length=10, blank=True)
+    owner_id = models.CharField(max_length=50, blank=True)
+    alliance_name = models.CharField(max_length=255, blank=True)
+    alliance_ticker = models.CharField(max_length=10, blank=True)
+    alliance_id = models.CharField(max_length=50, blank=True)
+    status = models.CharField(max_length=50, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.structure} - {self.get_change_type_display()} @ {self.recorded_at}"
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        verbose_name_plural = "structure histories"
 
 
 class StructureFilterPreset(models.Model):
