@@ -8,6 +8,7 @@ from wanderer.wanderer import create_acl_associated_to_map
 
 @admin.register(WandererManagedMap)
 class WandererManagedMapAdmin(admin.ModelAdmin):
+    list_display = ["name", "wanderer_url", "map_slug", "sync_structures"]
     readonly_fields = ["map_acl_id", "map_acl_api_key"]
     fieldsets = [
         (None, {"fields": ["name", "wanderer_url", "map_slug", "map_api_key"]}),
