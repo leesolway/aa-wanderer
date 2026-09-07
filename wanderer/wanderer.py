@@ -31,6 +31,10 @@ class OwnerEveIdDoesNotExistError(Exception):
 
 DEFAULT_TIMEOUT = 5
 
+# The structures endpoint (especially with include_removed=true) returns the
+# full history for a map and can take well over the default 5s to respond.
+STRUCTURES_TIMEOUT = 60
+
 
 def create_acl_associated_to_map(
     wanderer_url: str, map_slug: str, requesting_character_id: int, map_api_key: str
@@ -202,6 +206,7 @@ def get_map_structures(
         wanderer_url,
         url_path,
         bearer_token=map_api_key,
+        timeout=STRUCTURES_TIMEOUT,
     )
     return r.json()["data"]
 
