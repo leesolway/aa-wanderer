@@ -1,0 +1,126 @@
+{% extends "allianceauth/base-bs5.html" %}
+{% load i18n %}
+
+{% block page_title %}{% translate "Map Structures" %}{% endblock page_title %}
+{% block header_nav_brand %}{% translate "Map Structures" %}{% endblock header_nav_brand %}
+
+{% block content %}
+<div>
+    {% translate "Map Structures" as page_header %}
+    {% include "framework/header/page-header.html" with title=page_header %}
+
+    <div class="text-end mb-3">
+        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modal-structure-filter">
+            <i class="fas fa-filter fa-fw"></i> {% translate "Filter" %}
+        </button>
+        {% if solar_system or corporation %}
+            <a href="{% url 'wanderer:structures' %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-times fa-fw"></i> {% translate "Clear Filter" %}
+            </a>
+        {% endif %}
+    </div>
+
+    {% if solar_system or corporation %}
+        <div class="alert alert-info">
+            {% translate "Filtering by:" %}
+            {% if solar_system %}<strong>{% translate "System" %}:</strong> {{ solar_system }}{% endif %}
+            {% if solar_system and corporation %} &mdash; {% endif %}
+            {% if corporation %}<strong>{% translate "Corporation" %}:</strong> {{ corporation }}{% endif %}
+        </div>
+    {% endif %}
+
+    {% regroup structures by map as map_groups %}
+
+    {% if map_groups %}
+        {% for group in map_groups %}
+            {% translate "Map:" as map_label %}
+            {% include "framework/header/page-header.html" with title=group.grouper.name %}
+
+            <div class="card mb-4">
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>{% translate "Solar System" %}</th>
+                                <th>{% translate "Name" %}</th>
+                                <th>{% translate "Type" %}</th>
+                                <th>{% translate "Owner" %}</th>
+                                <th class="text-center">{% translate "Status" %}</th>
+                                <th>{% translate "End Time" %}</th>
+                                <th>{% translate "Notes" %}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for structure in group.list %}
+                                <tr>
+                                    <td>{{ structure.solar_system_name }}</td>
+                                    <td>{{ structure.name }}</td>
+                                    <td>{{ structure.structure_type }}</td>
+                                    <td>
+                                        {{ structure.owner_name }}
+                                        {% if structure.owner_ticker %}
+                                            <span class="text-muted">[{{ structure.owner_ticker }}]</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        {% if structure.status == "online" %}
+                                            <span class="badge text-bg-success">{{ structure.status }}</span>
+                                        {% elif structure.status == "reinforced" %}
+                                            <span class="badge text-bg-danger">{{ structure.status }}</span>
+                                        {% elif structure.status == "anchoring" or structure.status == "unanchoring" %}
+                                            <span class="badge text-bg-warning">{{ structure.status }}</span>
+                                        {% elif structure.status %}
+                                            <span class="badge text-bg-secondary">{{ structure.status }}</span>
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if structure.end_time %}
+                                            {{ structure.end_time|date:"Y-m-d H:i" }}
+                                        {% else %}
+                                            <span class="text-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ structure.notes|default:"—" }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-warning text-center">
+            {% translate "No structures found." %}
+        </div>
+    {% endif %}
+</div>
+
+<!-- Filter Modal -->
+<div class="modal fade" id="modal-structure-filter" tabindex="-1" aria-labelledby="modalStructureFilter" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title fs-5" id="modalStructureFilterLabel">{% translate "Filter Structures" %}</div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
+            </div>
+            <div class="modal-body">
+                <form method="get" action="{% url 'wanderer:structures' %}">
+                    <div class="mb-3">
+                        <label for="id_solar_system" class="form-label">{% translate "Solar System" %}</label>
+                        <input type="text" class="form-control" id="id_solar_system" name="solar_system" value="{{ solar_system }}" placeholder="{% translate 'e.g. Jita' %}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="id_corporation" class="form-label">{% translate "Corporation" %}</label>
+                        <input type="text" class="form-control" id="id_corporation" name="corporation" value="{{ corporation }}" placeholder="{% translate 'Name or ticker' %}">
+                    </div>
+                    <div class="text-end">
+                        <button type="submit" class="btn btn-primary">{% translate "Apply" %}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

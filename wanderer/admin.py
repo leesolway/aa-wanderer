@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from wanderer.models import WandererAccount, WandererManagedMap
+from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
 from wanderer.wanderer import create_acl_associated_to_map
 
 
@@ -24,6 +24,7 @@ class WandererManagedMapAdmin(admin.ModelAdmin):
                 ]
             },
         ),
+        ("Sync", {"fields": ["sync_structures"]}),
     ]
 
     def save_model(self, request, obj, form, change):
@@ -38,6 +39,20 @@ class WandererManagedMapAdmin(admin.ModelAdmin):
             w.save()
         else:
             super().save_model(request, obj, form, change)
+
+
+@admin.register(MapStructure)
+class MapStructureAdmin(admin.ModelAdmin):
+    list_display = ["name", "structure_type", "solar_system_name", "owner_name", "owner_ticker", "status", "map", "last_synced"]
+    list_filter = ["map", "status", "structure_type"]
+    search_fields = ["name", "solar_system_name", "owner_name", "owner_ticker"]
+    readonly_fields = [f.name for f in MapStructure._meta.get_fields() if hasattr(f, "name")]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(WandererAccount)

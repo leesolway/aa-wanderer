@@ -183,6 +183,16 @@ def set_character_to_member(
     )
 
 
+def get_map_structures(wanderer_url: str, map_slug: str, map_api_key: str) -> list[dict]:
+    """Returns all structures for a given map."""
+    r = req.get(
+        wanderer_url,
+        f"maps/{map_slug}/structures",
+        bearer_token=map_api_key,
+    )
+    return r.json()["data"]
+
+
 def _get_raw_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str):
     """Returns the raw result of requesting the members on an access list"""
     r = req.get(

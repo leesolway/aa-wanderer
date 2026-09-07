@@ -2,15 +2,45 @@
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
-from django.shortcuts import get_object_or_404, redirect
+from django.db.models import Q
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 
 from allianceauth.services.hooks import get_extension_logger
 
-from wanderer.models import WandererAccount, WandererManagedMap
+from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
 from wanderer.tasks import add_alts_to_map
 
 logger = get_extension_logger(__name__)
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def structures(request):
+    """Display synced map structures with optional filtering."""
+    solar_system = request.GET.get("solar_system", "").strip()
+    corporation = request.GET.get("corporation", "").strip()
+
+    qs = MapStructure.objects.select_related("map").filter(
+        map__sync_structures=True
+    )
+
+    if solar_system:
+        qs = qs.filter(solar_system_name__icontains=solar_system)
+    if corporation:
+        qs = qs.filter(
+            Q(owner_name__icontains=corporation) | Q(owner_ticker__icontains=corporation)
+        )
+
+    return render(
+        request,
+        "wanderer/structures.html",
+        {
+            "structures": qs,
+            "solar_system": solar_system,
+            "corporation": corporation,
+        },
+    )
 
 
 @login_required

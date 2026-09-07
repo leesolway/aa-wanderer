@@ -4,8 +4,8 @@ from celery import chain, shared_task
 
 from allianceauth.services.hooks import get_extension_logger
 
-from wanderer.models import WandererAccount, WandererManagedMap
-from wanderer.wanderer import AccessListRoles
+from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
+from wanderer.wanderer import AccessListRoles, get_map_structures
 
 logger = get_extension_logger(__name__)
 
@@ -124,6 +124,58 @@ def cleanup_access_list(wanderer_managed_map_id: int):
     ]
     for character_id_to_set_on_member in character_ids_to_set_on_member:
         wanderer_managed_map.set_character_to_member(character_id_to_set_on_member)
+
+
+@shared_task
+def sync_map_structures(wanderer_managed_map_id: int):
+    """Fetch structures from Wanderer and upsert them into the local DB."""
+    logger.info("Syncing structures for map id %d", wanderer_managed_map_id)
+
+    wanderer_map = WandererManagedMap.objects.get(pk=wanderer_managed_map_id)
+    structures = get_map_structures(
+        wanderer_map.wanderer_url, wanderer_map.map_slug, wanderer_map.map_api_key
+    )
+
+    seen_ids = set()
+    for s in structures:
+        wanderer_id = s["id"]
+        seen_ids.add(wanderer_id)
+        MapStructure.objects.update_or_create(
+            wanderer_id=wanderer_id,
+            defaults={
+                "map": wanderer_map,
+                "name": s.get("name", ""),
+                "structure_type": s.get("structure_type", ""),
+                "structure_type_id": s.get("structure_type_id", ""),
+                "solar_system_id": s.get("solar_system_id"),
+                "solar_system_name": s.get("solar_system_name", ""),
+                "owner_name": s.get("owner_name", ""),
+                "owner_ticker": s.get("owner_ticker", ""),
+                "status": s.get("status", ""),
+                "end_time": s.get("end_time"),
+                "notes": s.get("notes", ""),
+            },
+        )
+
+    deleted, _ = MapStructure.objects.filter(map=wanderer_map).exclude(
+        wanderer_id__in=seen_ids
+    ).delete()
+    logger.info(
+        "Map %d: upserted %d structures, deleted %d stale entries",
+        wanderer_managed_map_id,
+        len(seen_ids),
+        deleted,
+    )
+
+
+@shared_task
+def sync_all_map_structures():
+    """Hourly task: sync structures for all maps that have sync enabled."""
+    maps = WandererManagedMap.objects.filter(sync_structures=True)
+    logger.info("%d maps with structure sync enabled", maps.count())
+    tasks = [sync_map_structures.si(m.id) for m in maps]
+    if tasks:
+        chain(tasks).delay()
 
 
 @shared_task

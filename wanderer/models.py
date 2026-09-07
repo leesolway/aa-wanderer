@@ -96,6 +96,11 @@ class WandererManagedMap(models.Model):
         help_text=_("Factions to whose members this map is available."),
     )
 
+    sync_structures = models.BooleanField(
+        default=False,
+        help_text=_("Enable hourly structure sync for this map"),
+    )
+
     def __str__(self):
         return f"{self.wanderer_url}/{self.map_slug}"
 
@@ -255,6 +260,34 @@ class WandererManagedMap(models.Model):
         set_character_to_member(
             self.wanderer_url, self.map_acl_id, self.map_acl_api_key, character_id
         )
+
+
+class MapStructure(models.Model):
+    """A structure synced from a Wanderer map."""
+
+    wanderer_id = models.CharField(max_length=100, unique=True)
+    map = models.ForeignKey(
+        WandererManagedMap,
+        on_delete=models.CASCADE,
+        related_name="structures",
+    )
+    name = models.CharField(max_length=255, blank=True)
+    structure_type = models.CharField(max_length=100, blank=True)
+    structure_type_id = models.CharField(max_length=50, blank=True)
+    solar_system_id = models.BigIntegerField(null=True, blank=True)
+    solar_system_name = models.CharField(max_length=100, blank=True)
+    owner_name = models.CharField(max_length=255, blank=True)
+    owner_ticker = models.CharField(max_length=10, blank=True)
+    status = models.CharField(max_length=50, blank=True)
+    end_time = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+    last_synced = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.solar_system_name})"
+
+    class Meta:
+        ordering = ["map__name", "solar_system_name", "name"]
 
 
 class WandererAccount(models.Model):

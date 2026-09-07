@@ -14,7 +14,7 @@ from django.utils.translation import gettext_lazy as _
 
 from allianceauth import hooks
 from allianceauth.notifications.models import Notification
-from allianceauth.services.hooks import ServicesHook, UrlHook, get_extension_logger
+from allianceauth.services.hooks import MenuItemHook, ServicesHook, UrlHook, get_extension_logger
 
 from . import urls
 from .models import WandererManagedMap
@@ -125,3 +125,13 @@ post_delete.connect(add_del_callback, sender=WandererManagedMap)
 @hooks.register("url_hook")
 def register_urls():
     return UrlHook(urls, "wanderer", r"^wanderer/")
+
+
+@hooks.register("menu_item_hook")
+def register_structures_menu():
+    return MenuItemHook(
+        "Map Structures",
+        "fas fa-building fa-fw",
+        "wanderer:structures",
+        navactive=["wanderer:structures"],
+    )
