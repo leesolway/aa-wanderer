@@ -44,7 +44,7 @@ class WandererManagedMapAdmin(admin.ModelAdmin):
 
 @admin.register(MapStructure)
 class MapStructureAdmin(admin.ModelAdmin):
-    list_display = ["name", "structure_type", "solar_system_name", "owner_name", "owner_ticker", "status", "map", "last_synced"]
+    list_display = ["name", "structure_type", "solar_system_name", "owner_name", "owner_ticker", "alliance_name", "status", "inserted_at", "map", "last_synced"]
     list_filter = ["map", "status", "structure_type"]
     search_fields = ["name", "solar_system_name", "owner_name", "owner_ticker"]
     readonly_fields = [f.name for f in MapStructure._meta.get_fields() if hasattr(f, "name")]

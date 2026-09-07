@@ -3,6 +3,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db.models import Q
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
 
@@ -18,29 +19,86 @@ logger = get_extension_logger(__name__)
 @permission_required("wanderer.basic_access")
 def structures(request):
     """Display synced map structures with optional filtering."""
-    solar_system = request.GET.get("solar_system", "").strip()
-    corporation = request.GET.get("corporation", "").strip()
+    solar_systems = [v for v in request.GET.getlist("solar_system") if v.strip()]
+    corporations = [v for v in request.GET.getlist("corporation") if v.strip()]
+    alliances = [v for v in request.GET.getlist("alliance") if v.strip()]
 
-    qs = MapStructure.objects.select_related("map").filter(
-        map__sync_structures=True
-    )
+    qs = MapStructure.objects.select_related("map").filter(map__sync_structures=True)
 
-    if solar_system:
-        qs = qs.filter(solar_system_name__icontains=solar_system)
-    if corporation:
-        qs = qs.filter(
-            Q(owner_name__icontains=corporation) | Q(owner_ticker__icontains=corporation)
-        )
+    if solar_systems:
+        qs = qs.filter(solar_system_name__in=solar_systems)
+    if corporations:
+        q = Q()
+        for c in corporations:
+            q |= Q(owner_name=c)
+        qs = qs.filter(q)
+    if alliances:
+        qs = qs.filter(alliance_name__in=alliances)
 
     return render(
         request,
         "wanderer/structures.html",
         {
             "structures": qs,
-            "solar_system": solar_system,
-            "corporation": corporation,
+            "solar_systems": solar_systems,
+            "corporations": corporations,
+            "alliances": alliances,
+            "active_filters": bool(solar_systems or corporations or alliances),
         },
     )
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def autocomplete_solar_systems(request):
+    q = request.GET.get("q", "").strip()
+    qs = MapStructure.objects.all()
+    if q:
+        qs = qs.filter(solar_system_name__icontains=q)
+    values = list(
+        qs.values_list("solar_system_name", flat=True)
+        .distinct()
+        .order_by("solar_system_name")[:20]
+    )
+    return JsonResponse({"results": [{"value": v, "text": v} for v in values]})
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def autocomplete_corporations(request):
+    q = request.GET.get("q", "").strip()
+    qs = MapStructure.objects.exclude(owner_name="")
+    if q:
+        qs = qs.filter(Q(owner_name__icontains=q) | Q(owner_ticker__icontains=q))
+    rows = (
+        qs.values("owner_name", "owner_ticker")
+        .distinct()
+        .order_by("owner_name")[:20]
+    )
+    results = [
+        {"value": r["owner_name"], "text": f"{r['owner_name']} [{r['owner_ticker']}]" if r["owner_ticker"] else r["owner_name"]}
+        for r in rows
+    ]
+    return JsonResponse({"results": results})
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def autocomplete_alliances(request):
+    q = request.GET.get("q", "").strip()
+    qs = MapStructure.objects.exclude(alliance_name="")
+    if q:
+        qs = qs.filter(Q(alliance_name__icontains=q) | Q(alliance_ticker__icontains=q))
+    rows = (
+        qs.values("alliance_name", "alliance_ticker")
+        .distinct()
+        .order_by("alliance_name")[:20]
+    )
+    results = [
+        {"value": r["alliance_name"], "text": f"{r['alliance_name']} [{r['alliance_ticker']}]" if r["alliance_ticker"] else r["alliance_name"]}
+        for r in rows
+    ]
+    return JsonResponse({"results": results})
 
 
 @login_required

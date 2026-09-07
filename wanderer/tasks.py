@@ -1,11 +1,33 @@
 """Tasks."""
 
+import requests as http_requests
 from celery import chain, shared_task
+from django.utils.dateparse import parse_datetime
 
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
 from wanderer.wanderer import AccessListRoles, get_map_structures
+
+ESI_BASE = "https://esi.evetech.net/latest"
+
+
+def _fetch_alliance_for_corp(corp_id: str) -> tuple[str, str, str]:
+    """Returns (alliance_name, alliance_ticker, alliance_id) from ESI, or empty strings on failure."""
+    logger = get_extension_logger(__name__)
+    try:
+        r = http_requests.get(f"{ESI_BASE}/corporations/{corp_id}/", timeout=10)
+        r.raise_for_status()
+        alliance_id = r.json().get("alliance_id")
+        if not alliance_id:
+            return "", "", ""
+        r2 = http_requests.get(f"{ESI_BASE}/alliances/{alliance_id}/", timeout=10)
+        r2.raise_for_status()
+        data = r2.json()
+        return data.get("name", ""), data.get("ticker", ""), str(alliance_id)
+    except Exception:
+        logger.warning("Failed to fetch alliance for corp %s", corp_id, exc_info=True)
+        return "", "", ""
 
 logger = get_extension_logger(__name__)
 
@@ -137,9 +159,19 @@ def sync_map_structures(wanderer_managed_map_id: int):
     )
 
     seen_ids = set()
+    alliance_cache = {}
     for s in structures:
         wanderer_id = s["id"]
         seen_ids.add(wanderer_id)
+
+        owner_id = s.get("owner_id") or ""
+        if owner_id not in alliance_cache:
+            alliance_cache[owner_id] = _fetch_alliance_for_corp(owner_id) if owner_id else ("", "", "")
+        alliance_name, alliance_ticker, alliance_id = alliance_cache[owner_id]
+
+        raw_inserted_at = s.get("inserted_at")
+        inserted_at = parse_datetime(raw_inserted_at) if raw_inserted_at else None
+
         MapStructure.objects.update_or_create(
             wanderer_id=wanderer_id,
             defaults={
@@ -151,9 +183,14 @@ def sync_map_structures(wanderer_managed_map_id: int):
                 "solar_system_name": s.get("solar_system_name", ""),
                 "owner_name": s.get("owner_name", ""),
                 "owner_ticker": s.get("owner_ticker", ""),
+                "owner_id": owner_id,
+                "alliance_name": alliance_name,
+                "alliance_ticker": alliance_ticker,
+                "alliance_id": alliance_id,
                 "status": s.get("status", ""),
                 "end_time": s.get("end_time"),
                 "notes": s.get("notes") or "",
+                "inserted_at": inserted_at,
             },
         )
 

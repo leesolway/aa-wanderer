@@ -278,9 +278,14 @@ class MapStructure(models.Model):
     solar_system_name = models.CharField(max_length=100, blank=True)
     owner_name = models.CharField(max_length=255, blank=True)
     owner_ticker = models.CharField(max_length=10, blank=True)
+    owner_id = models.CharField(max_length=50, blank=True)
+    alliance_name = models.CharField(max_length=255, blank=True)
+    alliance_ticker = models.CharField(max_length=10, blank=True)
+    alliance_id = models.CharField(max_length=50, blank=True)
     status = models.CharField(max_length=50, blank=True)
     end_time = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    inserted_at = models.DateTimeField(null=True, blank=True)
     last_synced = models.DateTimeField(auto_now=True)
 
     def __str__(self):
