@@ -183,11 +183,24 @@ def set_character_to_member(
     )
 
 
-def get_map_structures(wanderer_url: str, map_slug: str, map_api_key: str) -> list[dict]:
-    """Returns all structures for a given map."""
+def get_map_structures(
+    wanderer_url: str,
+    map_slug: str,
+    map_api_key: str,
+    include_removed: bool = True,
+) -> list[dict]:
+    """Returns all structures for a given map.
+
+    When ``include_removed`` is set, Wanderer also returns structures it has
+    flagged as removed, so the local sync sees the full set rather than a
+    partial list.
+    """
+    url_path = f"maps/{map_slug}/structures"
+    if include_removed:
+        url_path += "?include_removed=true"
     r = req.get(
         wanderer_url,
-        f"maps/{map_slug}/structures",
+        url_path,
         bearer_token=map_api_key,
     )
     return r.json()["data"]

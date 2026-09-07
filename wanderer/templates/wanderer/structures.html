@@ -4,6 +4,29 @@
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
 <style>
+    /* Ensure Tom Select respects the active Bootstrap theme (light/dark) */
+    .ts-wrapper .ts-control {
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        border-color: var(--bs-border-color);
+    }
+    .ts-wrapper.focus .ts-control {
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+    }
+    .ts-wrapper .ts-dropdown {
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        border-color: var(--bs-border-color);
+    }
+    .ts-wrapper .ts-dropdown .option {
+        color: var(--bs-body-color);
+    }
+    .ts-wrapper .ts-dropdown .option.active,
+    .ts-wrapper .ts-dropdown .option:hover {
+        background-color: var(--bs-primary);
+        color: #fff;
+    }
     .ts-wrapper.multi .ts-control > div {
         background-color: var(--bs-primary);
         color: #fff;
@@ -14,6 +37,7 @@
         border-left-color: rgba(255,255,255,0.3);
     }
     tr[data-notes] { cursor: pointer; }
+    .preset-badge { cursor: pointer; }
 </style>
 {% endblock extra_css %}
 
@@ -21,106 +45,57 @@
 {% block header_nav_brand %}{% translate "Map Structures" %}{% endblock header_nav_brand %}
 
 {% block content %}
+{{ presets|json_script:"presets-data" }}
+
 <div>
     {% translate "Map Structures" as page_header %}
     {% include "framework/header/page-header.html" with title=page_header %}
 
-    <div class="text-end mb-3">
-        {% if request.user.is_staff %}
-            <a href="{% url 'wanderer:force_sync_structures' %}" class="btn btn-warning btn-sm">
-                <i class="fas fa-sync fa-fw"></i> {% translate "Force Sync" %}
-            </a>
-        {% endif %}
-        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modal-structure-filter">
-            <i class="fas fa-filter fa-fw"></i> {% translate "Filter" %}
-            {% if active_filters %}<span class="badge text-bg-warning ms-1">{% translate "Active" %}</span>{% endif %}
-        </button>
-        {% if active_filters %}
-            <a href="{% url 'wanderer:structures' %}" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-times fa-fw"></i> {% translate "Clear" %}
-            </a>
-        {% endif %}
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div id="page-preset-buttons" class="d-flex flex-wrap gap-2 align-items-center">
+            <!-- Preset shortcut buttons rendered by JS -->
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            {% if request.user.is_staff %}
+                <a href="{% url 'wanderer:force_sync_structures' %}" class="btn btn-warning btn-sm">
+                    <i class="fas fa-sync fa-fw"></i> {% translate "Force Sync" %}
+                </a>
+            {% endif %}
+            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modal-structure-filter">
+                <i class="fas fa-filter fa-fw"></i> {% translate "Filter" %}
+                {% if active_filters %}<span class="badge text-bg-warning ms-1">{% translate "Active" %}</span>{% endif %}
+            </button>
+            {% if active_filters %}
+                <a href="{% url 'wanderer:structures' %}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-times fa-fw"></i> {% translate "Clear" %}
+                </a>
+            {% endif %}
+        </div>
     </div>
 
-    {% regroup structures by map as map_groups %}
+    {% regroup active_structures by map as active_map_groups %}
+    {% regroup inactive_structures by map as inactive_map_groups %}
 
-    {% if map_groups %}
-        {% for group in map_groups %}
+    {% if active_map_groups %}
+        {% for group in active_map_groups %}
             {% include "framework/header/page-header.html" with title=group.grouper.name %}
-
-            <div class="card mb-4">
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0">
-                        <thead>
-                            <tr>
-                                <th>{% translate "Solar System" %}</th>
-                                <th>{% translate "Name" %}</th>
-                                <th>{% translate "Type" %}</th>
-                                <th>{% translate "Corporation" %}</th>
-                                <th>{% translate "Alliance" %}</th>
-                                <th class="text-center">{% translate "Status" %}</th>
-                                <th>{% translate "Added" %}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for structure in group.list %}
-                                <tr data-notes="{{ structure.notes|default:'' }}"
-                                    data-name="{{ structure.name }}"
-                                    onclick="showNotes(this)">
-                                    <td>{{ structure.solar_system_name }}</td>
-                                    <td>{{ structure.name }}</td>
-                                    <td>{{ structure.structure_type }}</td>
-                                    <td>
-                                        {% if structure.owner_id %}
-                                            <a href="https://zkillboard.com/corporation/{{ structure.owner_id }}/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                                {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
-                                            </a>
-                                        {% else %}
-                                            {{ structure.owner_name }}{% if structure.owner_ticker %} <span class="text-muted">[{{ structure.owner_ticker }}]</span>{% endif %}
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if structure.alliance_id %}
-                                            <a href="https://zkillboard.com/alliance/{{ structure.alliance_id }}/" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                                {{ structure.alliance_name }}{% if structure.alliance_ticker %} <span class="text-muted">[{{ structure.alliance_ticker }}]</span>{% endif %}
-                                            </a>
-                                        {% elif structure.alliance_name %}
-                                            {{ structure.alliance_name }}
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                    <td class="text-center">
-                                        {% if structure.status == "online" or structure.status == "Powered" %}
-                                            <span class="badge text-bg-success">{{ structure.status }}</span>
-                                        {% elif structure.status == "reinforced" %}
-                                            <span class="badge text-bg-danger">{{ structure.status }}</span>
-                                        {% elif structure.status == "anchoring" or structure.status == "unanchoring" %}
-                                            <span class="badge text-bg-warning">{{ structure.status }}</span>
-                                        {% elif structure.status %}
-                                            <span class="badge text-bg-secondary">{{ structure.status }}</span>
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if structure.inserted_at %}
-                                            {{ structure.inserted_at|date:"Y-m-d" }}
-                                        {% else %}
-                                            <span class="text-muted">—</span>
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            {% include "wanderer/includes/structure_table.html" with structures=group.list show_removed=False %}
         {% endfor %}
     {% else %}
         <div class="alert alert-warning text-center">
             {% translate "No structures found." %}
         </div>
+    {% endif %}
+
+    {% if inactive_map_groups %}
+        <hr class="my-4">
+        {% translate "No Longer Detected" as inactive_header %}
+        {% include "framework/header/page-header.html" with title=inactive_header %}
+        <p class="text-muted mb-3">{% translate "These structures were previously detected but are no longer present in the map." %}</p>
+        {% for group in inactive_map_groups %}
+            {% include "framework/header/page-header.html" with title=group.grouper.name %}
+            {% include "wanderer/includes/structure_table.html" with structures=group.list show_removed=True %}
+        {% endfor %}
     {% endif %}
 </div>
 
@@ -146,28 +121,38 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
             </div>
             <div class="modal-body">
+
+                <!-- Presets -->
+                <div id="preset-list" class="mb-3">
+                    <div class="d-flex flex-wrap gap-2 align-items-center" id="preset-badges">
+                        <small class="text-muted me-1">{% translate "Presets:" %}</small>
+                    </div>
+                </div>
+                <hr>
+
+                <!-- Filter inputs -->
                 <form method="get" action="{% url 'wanderer:structures' %}" id="filter-form">
                     <div class="mb-3">
                         <label class="form-label">{% translate "Solar Systems" %}</label>
-                        <select id="id_solar_system" name="solar_system" multiple placeholder="{% translate 'Search solar systems…' %}">
-                            {% for v in solar_systems %}
-                                <option value="{{ v }}" selected>{{ v }}</option>
+                        <select id="id_solar_system" name="system_id" multiple placeholder="{% translate 'Search solar systems…' %}">
+                            {% for s in selected_systems %}
+                                <option value="{{ s.id }}" selected>{{ s.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">{% translate "Corporations" %}</label>
-                        <select id="id_corporation" name="corporation" multiple placeholder="{% translate 'Search corporations…' %}">
-                            {% for v in corporations %}
-                                <option value="{{ v }}" selected>{{ v }}</option>
+                        <select id="id_corporation" name="corp_id" multiple placeholder="{% translate 'Search corporations…' %}">
+                            {% for c in selected_corps %}
+                                <option value="{{ c.owner_id }}" selected>{{ c.owner_name }}{% if c.owner_ticker %} [{{ c.owner_ticker }}]{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">{% translate "Alliances" %}</label>
-                        <select id="id_alliance" name="alliance" multiple placeholder="{% translate 'Search alliances…' %}">
-                            {% for v in alliances %}
-                                <option value="{{ v }}" selected>{{ v }}</option>
+                        <select id="id_alliance" name="alliance_id" multiple placeholder="{% translate 'Search alliances…' %}">
+                            {% for a in selected_alliances %}
+                                <option value="{{ a.alliance_id }}" selected>{{ a.alliance_name }}{% if a.alliance_ticker %} [{{ a.alliance_ticker }}]{% endif %}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -176,6 +161,15 @@
                         <button type="submit" class="btn btn-primary">{% translate "Apply" %}</button>
                     </div>
                 </form>
+
+                <!-- Save preset -->
+                <hr>
+                <div class="d-flex gap-2 align-items-center">
+                    <input type="text" id="preset-name-input" class="form-control form-control-sm" placeholder="{% translate 'Preset name…' %}" style="max-width: 220px;">
+                    <button type="button" class="btn btn-outline-success btn-sm" onclick="savePreset()">
+                        <i class="fas fa-save fa-fw"></i> {% translate "Save Preset" %}
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -186,8 +180,13 @@
 {% block extra_javascript %}
 <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
 <script>
+const PRESETS = JSON.parse(document.getElementById('presets-data').textContent);
+const CURRENT_USER_ID = {{ request.user.id }};
+const IS_STAFF = {{ request.user.is_staff|yesno:"true,false" }};
+const CSRF_TOKEN = '{{ csrf_token }}';
+
 function makeTomSelect(id, url) {
-    new TomSelect('#' + id, {
+    return new TomSelect('#' + id, {
         plugins: ['remove_button'],
         valueField: 'value',
         labelField: 'text',
@@ -207,9 +206,106 @@ function makeTomSelect(id, url) {
     });
 }
 
-makeTomSelect('id_solar_system', '{% url "wanderer:autocomplete_solar_systems" %}');
-makeTomSelect('id_corporation', '{% url "wanderer:autocomplete_corporations" %}');
-makeTomSelect('id_alliance', '{% url "wanderer:autocomplete_alliances" %}');
+const tsSystems = makeTomSelect('id_solar_system', '{% url "wanderer:autocomplete_solar_systems" %}');
+const tsCorps = makeTomSelect('id_corporation', '{% url "wanderer:autocomplete_corporations" %}');
+const tsAlliances = makeTomSelect('id_alliance', '{% url "wanderer:autocomplete_alliances" %}');
+
+function renderPresets() {
+    const modalContainer = document.getElementById('preset-badges');
+    const pageContainer = document.getElementById('page-preset-buttons');
+
+    modalContainer.innerHTML = '<small class="text-muted me-1">{% translate "Presets:" %}</small>';
+    pageContainer.innerHTML = '';
+
+    if (PRESETS.length === 0) {
+        modalContainer.innerHTML += '<span class="text-muted small">{% translate "None saved yet." %}</span>';
+        return;
+    }
+
+    PRESETS.forEach(preset => {
+        // Modal badge with optional delete button
+        const wrap = document.createElement('span');
+        wrap.className = 'd-inline-flex align-items-center gap-1';
+
+        const badge = document.createElement('span');
+        badge.className = 'badge text-bg-secondary preset-badge';
+        badge.textContent = preset.name;
+        badge.onclick = () => applyPreset(preset);
+        wrap.appendChild(badge);
+
+        if (IS_STAFF || preset.created_by_id === CURRENT_USER_ID) {
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'btn-close btn-close-sm';
+            del.style.cssText = 'width: 0.6em; height: 0.6em; font-size: 0.6em;';
+            del.title = '{% translate "Delete preset" %}';
+            del.onclick = (e) => { e.stopPropagation(); deletePreset(preset.id); };
+            wrap.appendChild(del);
+        }
+        modalContainer.appendChild(wrap);
+
+        // Page shortcut button
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-outline-secondary btn-sm';
+        btn.textContent = preset.name;
+        btn.onclick = () => applyPreset(preset);
+        pageContainer.appendChild(btn);
+    });
+}
+
+function applyPreset(preset) {
+    const url = new URL('{% url "wanderer:structures" %}', window.location.origin);
+    (preset.solar_system_ids || []).forEach(id => url.searchParams.append('system_id', id));
+    (preset.corporation_ids || []).forEach(id => url.searchParams.append('corp_id', id));
+    (preset.alliance_ids || []).forEach(id => url.searchParams.append('alliance_id', id));
+    window.location.href = url.toString();
+}
+
+function savePreset() {
+    const name = document.getElementById('preset-name-input').value.trim();
+    if (!name) { alert('{% translate "Please enter a preset name." %}'); return; }
+
+    const payload = {
+        name,
+        solar_system_ids: tsSystems.getValue(),
+        corporation_ids: tsCorps.getValue(),
+        alliance_ids: tsAlliances.getValue(),
+    };
+
+    fetch('{% url "wanderer:preset_save" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
+        body: JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { alert(data.error); return; }
+        const idx = PRESETS.findIndex(p => p.id === data.id);
+        if (idx >= 0) PRESETS[idx] = data; else PRESETS.push(data);
+        PRESETS.sort((a, b) => a.name.localeCompare(b.name));
+        renderPresets();
+        document.getElementById('preset-name-input').value = '';
+    })
+    .catch(() => alert('{% translate "Failed to save preset." %}'));
+}
+
+function deletePreset(presetId) {
+    if (!confirm('{% translate "Delete this preset?" %}')) return;
+
+    fetch(`{% url "wanderer:preset_delete" 0 %}`.replace('/0/', `/${presetId}/`), {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF_TOKEN },
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.error) { alert(data.error); return; }
+        const idx = PRESETS.findIndex(p => p.id === presetId);
+        if (idx >= 0) PRESETS.splice(idx, 1);
+        renderPresets();
+    })
+    .catch(() => alert('{% translate "Failed to delete preset." %}'));
+}
 
 function showNotes(row) {
     const notes = row.dataset.notes;
@@ -218,5 +314,7 @@ function showNotes(row) {
     document.getElementById('modal-notes-body').textContent = notes || '{% translate "No notes." %}';
     new bootstrap.Modal(document.getElementById('modal-notes')).show();
 }
+
+renderPresets();
 </script>
 {% endblock extra_javascript %}

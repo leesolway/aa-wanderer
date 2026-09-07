@@ -1,10 +1,12 @@
 """Tasks."""
 
 import requests as http_requests
-from celery import chain, shared_task
+from celery import chain, group, shared_task
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from allianceauth.services.hooks import get_extension_logger
+from eve_sde.models import SolarSystem
 
 from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
 from wanderer.wanderer import AccessListRoles, get_map_structures
@@ -148,7 +150,7 @@ def cleanup_access_list(wanderer_managed_map_id: int):
         wanderer_managed_map.set_character_to_member(character_id_to_set_on_member)
 
 
-@shared_task
+@shared_task(soft_time_limit=300, time_limit=360)
 def sync_map_structures(wanderer_managed_map_id: int):
     """Fetch structures from Wanderer and upsert them into the local DB."""
     logger.info("Syncing structures for map id %d", wanderer_managed_map_id)
@@ -159,49 +161,79 @@ def sync_map_structures(wanderer_managed_map_id: int):
     )
 
     seen_ids = set()
+    failed = 0
     alliance_cache = {}
     for s in structures:
         wanderer_id = s["id"]
+
+        try:
+            owner_id = s.get("owner_id") or ""
+            if owner_id not in alliance_cache:
+                alliance_cache[owner_id] = (
+                    _fetch_alliance_for_corp(owner_id) if owner_id else ("", "", "")
+                )
+            alliance_name, alliance_ticker, alliance_id = alliance_cache[owner_id]
+
+            raw_inserted_at = s.get("inserted_at")
+            inserted_at = parse_datetime(raw_inserted_at) if raw_inserted_at else None
+
+            solar_system_id = s.get("solar_system_id")
+            solar_system = None
+            if solar_system_id:
+                solar_system = SolarSystem.objects.filter(id=solar_system_id).first()
+                if solar_system is None:
+                    logger.warning(
+                        "SolarSystem id %s not found in SDE", solar_system_id
+                    )
+
+            MapStructure.objects.update_or_create(
+                wanderer_id=wanderer_id,
+                defaults={
+                    "map": wanderer_map,
+                    "name": s.get("name", ""),
+                    "structure_type": s.get("structure_type", ""),
+                    "structure_type_id": s.get("structure_type_id", ""),
+                    "solar_system": solar_system,
+                    "owner_name": s.get("owner_name", ""),
+                    "owner_ticker": s.get("owner_ticker", ""),
+                    "owner_id": owner_id,
+                    "alliance_name": alliance_name,
+                    "alliance_ticker": alliance_ticker,
+                    "alliance_id": alliance_id,
+                    "status": s.get("status", ""),
+                    "end_time": s.get("end_time"),
+                    "notes": s.get("notes") or "",
+                    "inserted_at": inserted_at,
+                    "is_active": True,
+                    "removed_at": None,
+                },
+            )
+        except Exception:
+            failed += 1
+            logger.exception(
+                "Failed to sync structure %s on map %d",
+                wanderer_id,
+                wanderer_managed_map_id,
+            )
+            continue
+
         seen_ids.add(wanderer_id)
 
-        owner_id = s.get("owner_id") or ""
-        if owner_id not in alliance_cache:
-            alliance_cache[owner_id] = _fetch_alliance_for_corp(owner_id) if owner_id else ("", "", "")
-        alliance_name, alliance_ticker, alliance_id = alliance_cache[owner_id]
-
-        raw_inserted_at = s.get("inserted_at")
-        inserted_at = parse_datetime(raw_inserted_at) if raw_inserted_at else None
-
-        MapStructure.objects.update_or_create(
-            wanderer_id=wanderer_id,
-            defaults={
-                "map": wanderer_map,
-                "name": s.get("name", ""),
-                "structure_type": s.get("structure_type", ""),
-                "structure_type_id": s.get("structure_type_id", ""),
-                "solar_system_id": s.get("solar_system_id"),
-                "solar_system_name": s.get("solar_system_name", ""),
-                "owner_name": s.get("owner_name", ""),
-                "owner_ticker": s.get("owner_ticker", ""),
-                "owner_id": owner_id,
-                "alliance_name": alliance_name,
-                "alliance_ticker": alliance_ticker,
-                "alliance_id": alliance_id,
-                "status": s.get("status", ""),
-                "end_time": s.get("end_time"),
-                "notes": s.get("notes") or "",
-                "inserted_at": inserted_at,
-            },
+    # Mark structures no longer in the API as inactive rather than deleting them.
+    # Skip deactivation if any row failed so a transient error can't wipe the map.
+    deactivated = 0
+    if not failed:
+        deactivated = MapStructure.objects.filter(
+            map=wanderer_map, is_active=True
+        ).exclude(wanderer_id__in=seen_ids).update(
+            is_active=False, removed_at=timezone.now()
         )
-
-    deleted, _ = MapStructure.objects.filter(map=wanderer_map).exclude(
-        wanderer_id__in=seen_ids
-    ).delete()
     logger.info(
-        "Map %d: upserted %d structures, deleted %d stale entries",
+        "Map %d: upserted %d structures, %d failed, deactivated %d",
         wanderer_managed_map_id,
         len(seen_ids),
-        deleted,
+        failed,
+        deactivated,
     )
 
 
@@ -212,7 +244,8 @@ def sync_all_map_structures():
     logger.info("%d maps with structure sync enabled", maps.count())
     tasks = [sync_map_structures.si(m.id) for m in maps]
     if tasks:
-        chain(tasks).delay()
+        # group, not chain: one map failing must not skip the rest
+        group(tasks).delay()
 
 
 @shared_task

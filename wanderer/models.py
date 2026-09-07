@@ -274,8 +274,13 @@ class MapStructure(models.Model):
     name = models.CharField(max_length=255, blank=True)
     structure_type = models.CharField(max_length=100, blank=True)
     structure_type_id = models.CharField(max_length=50, blank=True)
-    solar_system_id = models.BigIntegerField(null=True, blank=True)
-    solar_system_name = models.CharField(max_length=100, blank=True)
+    solar_system = models.ForeignKey(
+        "eve_sde.SolarSystem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     owner_name = models.CharField(max_length=255, blank=True)
     owner_ticker = models.CharField(max_length=10, blank=True)
     owner_id = models.CharField(max_length=50, blank=True)
@@ -286,13 +291,35 @@ class MapStructure(models.Model):
     end_time = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
     inserted_at = models.DateTimeField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
     last_synced = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.name} ({self.solar_system_name})"
+        solar_system_name = self.solar_system.name if self.solar_system else ""
+        return f"{self.name} ({solar_system_name})"
 
     class Meta:
-        ordering = ["map__name", "solar_system_name", "name"]
+        ordering = ["map__name", "solar_system__name", "name"]
+
+
+class StructureFilterPreset(models.Model):
+    """A saved set of structure filter IDs."""
+
+    name = models.CharField(max_length=100, unique=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    solar_system_ids = models.JSONField(default=list, blank=True)
+    corporation_ids = models.JSONField(default=list, blank=True)
+    alliance_ids = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+    class Meta:
+        ordering = ["name"]
 
 
 class WandererAccount(models.Model):
