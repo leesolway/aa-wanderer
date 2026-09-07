@@ -153,7 +153,7 @@ def sync_map_structures(wanderer_managed_map_id: int):
                 "owner_ticker": s.get("owner_ticker", ""),
                 "status": s.get("status", ""),
                 "end_time": s.get("end_time"),
-                "notes": s.get("notes", ""),
+                "notes": s.get("notes") or "",
             },
         )
 
