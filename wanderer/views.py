@@ -9,7 +9,7 @@ from django.utils.translation import gettext_lazy as _
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
-from wanderer.tasks import add_alts_to_map
+from wanderer.tasks import add_alts_to_map, sync_all_map_structures
 
 logger = get_extension_logger(__name__)
 
@@ -41,6 +41,18 @@ def structures(request):
             "corporation": corporation,
         },
     )
+
+
+@login_required
+@permission_required("wanderer.basic_access")
+def force_sync_structures(request):
+    """Manually trigger a structure sync for all maps."""
+    if not request.user.is_staff:
+        messages.error(request, _("You do not have permission to do that."))
+        return redirect("wanderer:structures")
+    sync_all_map_structures.delay()
+    messages.success(request, _("Structure sync queued."))
+    return redirect("wanderer:structures")
 
 
 @login_required

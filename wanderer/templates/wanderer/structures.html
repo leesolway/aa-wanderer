@@ -10,6 +10,11 @@
     {% include "framework/header/page-header.html" with title=page_header %}
 
     <div class="text-end mb-3">
+        {% if request.user.is_staff %}
+            <a href="{% url 'wanderer:force_sync_structures' %}" class="btn btn-warning btn-sm">
+                <i class="fas fa-sync fa-fw"></i> {% translate "Force Sync" %}
+            </a>
+        {% endif %}
         <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modal-structure-filter">
             <i class="fas fa-filter fa-fw"></i> {% translate "Filter" %}
         </button>
