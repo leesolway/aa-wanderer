@@ -4,12 +4,13 @@ from unittest.mock import MagicMock, call, patch
 
 from django.test import TestCase
 
-from wanderer.models import WandererAccount, WandererManagedMap
+from wanderer.models import MapStructure, WandererAccount, WandererManagedMap
 from wanderer.tasks import (
     add_alts_to_map,
     cleanup_access_list,
     remove_user_characters_from_map,
     sync_all_map_structures,
+    sync_map_structures,
 )
 
 from ..wanderer import AccessListRoles
@@ -119,6 +120,56 @@ class TestTasks(TestCase):
         WandererManagedMap.remove_member_from_access_list.assert_not_called()
         WandererManagedMap.get_non_member_characters.assert_called_once()
         WandererManagedMap.set_character_to_member.assert_not_called()
+
+
+class TestSyncMapStructuresNullFields(TestCase):
+    """
+    Regression test: Wanderer represents an unset value as an explicit JSON null
+    (not a missing key and not "") - confirmed from a real payload with
+    "notes": null. sync_map_structures must coerce those to "" before writing to
+    MapStructure, whose string columns are NOT NULL at the DB level (blank=True,
+    not null=True - the standard Django convention of using "" rather than NULL
+    for "no value"). Getting this wrong caused a MySQL IntegrityError ("Column
+    'owner_name' cannot be null") that silently dropped every affected structure
+    - including any whose owner had just changed - from every sync.
+    """
+
+    @patch("wanderer.tasks.get_map_structures")
+    def test_null_string_fields_from_api_are_stored_as_empty_string(
+        self, mock_get_map_structures
+    ):
+        mock_get_map_structures.return_value = [
+            {
+                "id": "194037d8-a073-4c28-908e-07c52e7bbf03",
+                "solar_system_id": None,
+                "name": None,
+                "structure_type": None,
+                "structure_type_id": None,
+                "owner_name": None,
+                "owner_ticker": None,
+                "owner_id": None,
+                "status": None,
+                "notes": None,
+                "end_time": None,
+                "inserted_at": None,
+                "updated_at": None,
+            }
+        ]
+        wanderer_map = create_managed_map()
+
+        sync_map_structures(wanderer_map.id)
+
+        structure = MapStructure.objects.get(
+            wanderer_id="194037d8-a073-4c28-908e-07c52e7bbf03"
+        )
+        self.assertEqual(structure.name, "")
+        self.assertEqual(structure.structure_type, "")
+        self.assertEqual(structure.structure_type_id, "")
+        self.assertEqual(structure.owner_name, "")
+        self.assertEqual(structure.owner_ticker, "")
+        self.assertEqual(structure.owner_id, "")
+        self.assertEqual(structure.status, "")
+        self.assertEqual(structure.notes, "")
 
 
 class TestSyncAllMapStructures(TestCase):

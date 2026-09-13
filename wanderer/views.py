@@ -14,6 +14,8 @@ from django.views.decorators.http import require_POST
 from eve_sde.models import SolarSystem
 
 from allianceauth.eveonline.models import EveAllianceInfo, EveCorporationInfo
+
+from wormholes.models import WormholeClass, WormholeSystem
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import (
@@ -77,7 +79,14 @@ def structures(request):
     """List solar systems that have at least one currently-active structure."""
     system_ids, corp_ids, alliance_ids = _structure_filters(request)
 
-    qs = Structure.objects.filter(is_active=True).select_related("solar_system")
+    wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
+
+    qs = Structure.objects.filter(is_active=True).select_related(
+        "solar_system",
+        "solar_system__constellation",
+        "solar_system__wormhole_info",
+        "solar_system__wormhole_info__effect",
+    )
 
     if system_ids or corp_ids or alliance_ids:
         q = Q()
@@ -89,18 +98,38 @@ def structures(request):
             q |= Q(alliance_id__in=alliance_ids)
         qs = qs.filter(q)
 
+    def _resolve_wh_class(solar_system):
+        """Return WormholeClass for a system, falling back to constellation class_id."""
+        try:
+            wh_class = solar_system.wormhole_info.wormhole_class
+        except WormholeSystem.DoesNotExist:
+            wh_class = None
+        if wh_class is None:
+            class_id = (
+                solar_system.wormhole_class_id_raw
+                or (solar_system.constellation and solar_system.constellation.wormhole_class_id_raw)
+            )
+            wh_class = wh_classes_by_id.get(class_id)
+        return wh_class
+
     systems_by_id = {}
     for s in qs:
-        system = systems_by_id.setdefault(
-            s.solar_system_id,
-            {
+        if s.solar_system_id not in systems_by_id:
+            wh_class = _resolve_wh_class(s.solar_system)
+            try:
+                effect = s.solar_system.wormhole_info.effect
+            except WormholeSystem.DoesNotExist:
+                effect = None
+            systems_by_id[s.solar_system_id] = {
                 "solar_system": s.solar_system,
                 "structure_count": 0,
                 "corporations": {},
                 "alliances": {},
                 "last_updated": None,
-            },
-        )
+                "wh_class": wh_class,
+                "effect": effect,
+            }
+        system = systems_by_id[s.solar_system_id]
         system["structure_count"] += 1
         if s.owner_id:
             system["corporations"][s.owner_id] = {
@@ -161,7 +190,29 @@ def structures(request):
 @permission_required("wanderer.basic_access")
 def system_detail(request, solar_system_id: int):
     """Show every currently-tracked structure (active and previously-seen) in one solar system."""
-    solar_system = get_object_or_404(SolarSystem, pk=solar_system_id)
+    solar_system = get_object_or_404(
+        SolarSystem.objects.select_related(
+            "constellation",
+            "wormhole_info__wormhole_class",
+            "wormhole_info__effect",
+        ),
+        pk=solar_system_id,
+    )
+    try:
+        wh_info = solar_system.wormhole_info
+        wh_class = wh_info.wormhole_class
+        effect = wh_info.effect
+    except WormholeSystem.DoesNotExist:
+        wh_class = None
+        effect = None
+    if wh_class is None:
+        wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
+        class_id = (
+            solar_system.wormhole_class_id_raw
+            or (solar_system.constellation and solar_system.constellation.wormhole_class_id_raw)
+        )
+        wh_class = wh_classes_by_id.get(class_id)
+
     qs = Structure.objects.filter(solar_system=solar_system).select_related(
         "last_source_map"
     )
@@ -171,6 +222,8 @@ def system_detail(request, solar_system_id: int):
         "wanderer/system_detail.html",
         {
             "solar_system": solar_system,
+            "wh_class": wh_class,
+            "effect": effect,
             "active_structures": qs.filter(is_active=True).order_by("name"),
             "inactive_structures": qs.filter(is_active=False).order_by("-removed_at"),
         },

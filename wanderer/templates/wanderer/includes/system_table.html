@@ -10,6 +10,8 @@
                 <thead class="table-dark">
                     <tr>
                         <th>{% translate "Solar System" %}</th>
+                        <th>{% translate "WH Class" %}</th>
+                        <th>{% translate "Effect" %}</th>
                         <th>{% translate "Structures" %}</th>
                         <th>{% translate "Corporations" %}</th>
                         <th>{% translate "Alliances" %}</th>
@@ -25,6 +27,20 @@
                                 <a href="{{ zkill_system }}" target="_blank" rel="noopener noreferrer" class="text-muted ms-1" onclick="event.stopPropagation()" title="{% translate 'zKillboard' %}">
                                     <i class="fas fa-external-link-alt fa-xs"></i>
                                 </a>
+                            </td>
+                            <td>
+                                {% if system.wh_class %}
+                                    <span class="badge bg-secondary">{{ system.wh_class.short_name }}</span>
+                                {% else %}
+                                    <span class="text-muted">&mdash;</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if system.effect %}
+                                    {{ system.effect.name }}
+                                {% else %}
+                                    <span class="text-muted">&mdash;</span>
+                                {% endif %}
                             </td>
                             <td>{{ system.structure_count }}</td>
                             <td>

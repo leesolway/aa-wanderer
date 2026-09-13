@@ -7,16 +7,38 @@
 {% block content %}
 {% zkillboard_url 'system' solar_system.id as zkill_system %}
 <div class="container-fluid mt-3">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-        <a href="{% url 'wanderer:structures' %}" class="btn btn-sm btn-secondary">
-            <i class="fa-solid fa-arrow-left"></i> {% translate "Back to Solar Systems" %}
+    <div class="mb-3">
+        <a href="{% url 'wanderer:structures' %}" class="btn btn-sm btn-secondary"
+           onclick="if (history.length > 1) { history.back(); return false; }">
+            <i class="fa-solid fa-arrow-left"></i> {% translate "Back" %}
         </a>
-        <h4 class="mb-0">
-            {{ solar_system.name }}
-            <a href="{{ zkill_system }}" target="_blank" rel="noopener noreferrer" class="small text-muted ms-1" title="{% translate 'zKillboard' %}">
-                <i class="fas fa-external-link-alt"></i>
-            </a>
-        </h4>
+    </div>
+
+    {# System header — same card style as HR member detail #}
+    <div class="card mb-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap">
+            <div class="d-flex align-items-center flex-nowrap">
+                {% if wh_class %}
+                <div class="d-flex align-items-center justify-content-center flex-shrink-0 bg-dark text-white fw-bold m-0"
+                     style="width:64px; height:64px; font-size:1.25rem; border-radius: 0.375rem 0 0 0.375rem;">
+                    {{ wh_class.short_name }}
+                </div>
+                {% endif %}
+                <h4 class="mb-0 mx-3">{{ solar_system.name }}</h4>
+                {% if wh_class %}
+                <span class="badge bg-secondary me-2">{{ wh_class.title }}</span>
+                {% endif %}
+                {% if effect %}
+                <span class="badge bg-warning text-dark">{{ effect.name }}</span>
+                {% endif %}
+            </div>
+            <div class="pe-3 py-2">
+                <a href="{{ zkill_system }}" target="_blank" rel="noopener noreferrer"
+                   class="btn btn-sm btn-outline-secondary">
+                    <i class="fas fa-external-link-alt fa-fw"></i> {% translate "zKillboard" %}
+                </a>
+            </div>
+        </div>
     </div>
 
     {% if active_structures %}

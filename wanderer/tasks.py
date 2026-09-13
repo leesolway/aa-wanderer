@@ -15,6 +15,18 @@ from wanderer.wanderer import AccessListRoles, get_map_structures
 ESI_BASE = "https://esi.evetech.net/latest"
 
 
+def _str(payload: dict, key: str) -> str:
+    """
+    payload.get(key, "") only falls back to "" when the key is missing entirely -
+    Wanderer represents an unset value as an explicit JSON null (confirmed from a
+    real payload, e.g. "notes": null), which comes through as Python None and
+    trips MapStructure's NOT NULL string columns (blank=True, not null=True - the
+    normal Django convention of using "" rather than NULL for "no value"). Use
+    this for every plain string field pulled from the API instead of .get(key, "").
+    """
+    return payload.get(key) or ""
+
+
 def _fetch_alliance_for_corp(corp_id: str) -> tuple[str, str, str]:
     """Returns (alliance_name, alliance_ticker, alliance_id) from ESI, or empty strings on failure."""
     logger = get_extension_logger(__name__)
@@ -172,6 +184,10 @@ def sync_map_structures(wanderer_managed_map_id: int):
         )
         return
 
+    # Pre-fetch all needed solar systems in one query rather than one per structure.
+    solar_system_ids = {s.get("solar_system_id") for s in structures if s.get("solar_system_id")}
+    solar_systems: dict = {ss.id: ss for ss in SolarSystem.objects.filter(id__in=solar_system_ids)}
+
     seen_ids = set()
     failed = 0
     alliance_cache = {}
@@ -179,7 +195,7 @@ def sync_map_structures(wanderer_managed_map_id: int):
         wanderer_id = s["id"]
 
         try:
-            owner_id = s.get("owner_id") or ""
+            owner_id = _str(s, "owner_id")
             if owner_id not in alliance_cache:
                 alliance_cache[owner_id] = (
                     _fetch_alliance_for_corp(owner_id) if owner_id else ("", "", "")
@@ -197,7 +213,7 @@ def sync_map_structures(wanderer_managed_map_id: int):
             solar_system_id = s.get("solar_system_id")
             solar_system = None
             if solar_system_id:
-                solar_system = SolarSystem.objects.filter(id=solar_system_id).first()
+                solar_system = solar_systems.get(solar_system_id)
                 if solar_system is None:
                     logger.warning(
                         "SolarSystem id %s not found in SDE", solar_system_id
@@ -207,19 +223,19 @@ def sync_map_structures(wanderer_managed_map_id: int):
                 wanderer_id=wanderer_id,
                 defaults={
                     "map": wanderer_map,
-                    "name": s.get("name", ""),
-                    "structure_type": s.get("structure_type", ""),
-                    "structure_type_id": s.get("structure_type_id", ""),
+                    "name": _str(s, "name"),
+                    "structure_type": _str(s, "structure_type"),
+                    "structure_type_id": _str(s, "structure_type_id"),
                     "solar_system": solar_system,
-                    "owner_name": s.get("owner_name", ""),
-                    "owner_ticker": s.get("owner_ticker", ""),
+                    "owner_name": _str(s, "owner_name"),
+                    "owner_ticker": _str(s, "owner_ticker"),
                     "owner_id": owner_id,
                     "alliance_name": alliance_name,
                     "alliance_ticker": alliance_ticker,
                     "alliance_id": alliance_id,
-                    "status": s.get("status", ""),
+                    "status": _str(s, "status"),
                     "end_time": s.get("end_time"),
-                    "notes": s.get("notes") or "",
+                    "notes": _str(s, "notes"),
                     "inserted_at": inserted_at,
                     "structure_updated_at": structure_updated_at,
                     "is_active": True,
@@ -284,8 +300,8 @@ def sync_all_map_structures():
     per-structure loop), so one map failing here still can't stop the others or
     skip reconciliation.
     """
-    maps = WandererManagedMap.objects.filter(sync_structures=True)
-    logger.info("%d maps with structure sync enabled", maps.count())
+    maps = list(WandererManagedMap.objects.filter(sync_structures=True))
+    logger.info("%d maps with structure sync enabled", len(maps))
     for wanderer_map in maps:
         sync_map_structures(wanderer_map.id)
     reconcile_structures()

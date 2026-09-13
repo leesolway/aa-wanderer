@@ -119,76 +119,36 @@ class WandererManagedMap(models.Model):
         if not user.has_perm("wanderer.basic_access"):
             return False
 
-        try:
-            main_character: EveCharacter = user.profile.main_character
-            assert main_character
-
-            if user.is_superuser:
-                logger.info("Returning all servers to user %s", user)
-                return True
-
-            # build queries then OR them all
-            queries = []
-
-            # States access everyone has a state
-            queries.append(models.Q(state_access=user.profile.state))
-            # Groups access, is ok if no groups.
-            queries.append(models.Q(group_access__in=user.groups.all()))
-            # ONLY on main char from here down
-            # Character access
-            queries.append(models.Q(character_access=main_character))
-            # Corp access
-            try:
-                queries.append(
-                    models.Q(
-                        corporation_access=EveCorporationInfo.objects.get(
-                            corporation_id=main_character.corporation_id
-                        )
-                    )
-                )
-            except EveCorporationInfo.DoesNotExist:
-                pass
-            # Alliance access if part of an alliance
-            try:
-                if main_character.alliance_id:
-                    queries.append(
-                        models.Q(
-                            alliance_access=EveAllianceInfo.objects.get(
-                                alliance_id=main_character.alliance_id
-                            )
-                        )
-                    )
-            except EveAllianceInfo.DoesNotExist:
-                pass
-            # Faction access if part of a faction
-            try:
-                if main_character.faction_id:
-                    queries.append(
-                        models.Q(
-                            faction_access=EveFactionInfo.objects.get(
-                                faction_id=main_character.faction_id
-                            )
-                        )
-                    )
-            except EveFactionInfo.DoesNotExist:
-                pass
-
-            logger.debug(
-                "%d queries for %s 's visible characters", len(queries), main_character
-            )
-
-            if settings.DEBUG:
-                logger.debug(queries)
-
-            # filter based on "OR" all queries
-            query = queries.pop()
-            for q in queries:
-                query |= q
-            return WandererManagedMap.objects.filter(query, id=self.id).exists()
-
-        except AssertionError:
+        main_character: EveCharacter = user.profile.main_character
+        if not main_character:
             logger.info("User %s without eve character can't access maps", user)
             return False
+
+        if user.is_superuser:
+            logger.info("Returning all servers to user %s", user)
+            return True
+
+        # Build queries then OR them all. Use cross-relation lookups on the character's
+        # IDs directly — no extra DB queries to fetch the related model instances first.
+        queries = [
+            models.Q(state_access=user.profile.state),
+            models.Q(group_access__in=user.groups.all()),
+            models.Q(character_access=main_character),
+            models.Q(corporation_access__corporation_id=main_character.corporation_id),
+        ]
+        if main_character.alliance_id:
+            queries.append(models.Q(alliance_access__alliance_id=main_character.alliance_id))
+        if main_character.faction_id:
+            queries.append(models.Q(faction_access__faction_id=main_character.faction_id))
+
+        logger.debug("%d queries for %s's visible characters", len(queries), main_character)
+        if settings.DEBUG:
+            logger.debug(queries)
+
+        query = queries[0]
+        for q in queries[1:]:
+            query |= q
+        return WandererManagedMap.objects.filter(query, id=self.id).exists()
 
     def user_has_account(self, user: User) -> bool:
         """Return true if the user has an active account on this map"""
