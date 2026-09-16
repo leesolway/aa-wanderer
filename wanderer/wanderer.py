@@ -78,7 +78,7 @@ def create_acl_associated_to_map(
 
     acl_id = r.json()["data"]["id"]
     acl_key = r.json()["data"]["api_key"]
-    logger.info("Successfully created ACL id %s")
+    logger.info("Successfully created ACL id %s", acl_id)
 
     return acl_id, acl_key
 
@@ -89,7 +89,7 @@ def get_acl_member_ids(wanderer_url: str, acl_id: str, acl_api_key: str) -> list
     """
     logger.info("Requesting character on the ACL of map %s / %s", wanderer_url, acl_id)
 
-    r = _get_raw_acl_members(wanderer_url, acl_id, acl_api_key)
+    r = req.get(wanderer_url, f"acls/{acl_id}", bearer_token=acl_api_key)
 
     return [
         int(member["eve_character_id"])
@@ -102,7 +102,7 @@ def add_character_to_acl(
     wanderer_url: str, acl_id: str, acl_api_key: str, character_id: int
 ):
     """
-    Adds a single character to the ACL with the viewer role
+    Adds a single character to the ACL with the member role
     """
 
     req.post(
@@ -151,7 +151,7 @@ def get_non_member_characters(
         acl_id,
     )
 
-    r = _get_raw_acl_members(wanderer_url, acl_id, acl_api_key)
+    r = req.get(wanderer_url, f"acls/{acl_id}", bearer_token=acl_api_key)
 
     return [
         (int(member["eve_character_id"]), AccessListRoles(member["role"]))
@@ -207,14 +207,3 @@ def get_map_structures(
         timeout=STRUCTURES_TIMEOUT,
     )
     return r.json()["data"]
-
-
-def _get_raw_acl_members(wanderer_url: str, acl_id: str, acl_api_key: str):
-    """Returns the raw result of requesting the members on an access list"""
-    r = req.get(
-        wanderer_url,
-        f"acls/{acl_id}",
-        bearer_token=acl_api_key,
-    )
-
-    return r

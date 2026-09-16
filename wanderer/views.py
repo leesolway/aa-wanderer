@@ -113,6 +113,21 @@ def _selected_filter_labels(system_ids, corp_ids, alliance_ids):
     return selected_systems, selected_corps, selected_alliances
 
 
+def _resolve_wh_class(solar_system, wh_classes_by_id: dict):
+    """Return WormholeClass for a system, falling back to constellation class_id."""
+    try:
+        wh_class = solar_system.wormhole_info.wormhole_class
+    except WormholeSystem.DoesNotExist:
+        wh_class = None
+    if wh_class is None:
+        class_id = (
+            solar_system.wormhole_class_id_raw
+            or (solar_system.constellation and solar_system.constellation.wormhole_class_id_raw)
+        )
+        wh_class = wh_classes_by_id.get(class_id)
+    return wh_class
+
+
 @login_required
 @permission_required("wanderer.basic_access")
 def structures(request):
@@ -157,24 +172,10 @@ def structures(request):
     if effect_names:
         qs = qs.filter(solar_system__wormhole_info__effect__name__in=effect_names)
 
-    def _resolve_wh_class(solar_system):
-        """Return WormholeClass for a system, falling back to constellation class_id."""
-        try:
-            wh_class = solar_system.wormhole_info.wormhole_class
-        except WormholeSystem.DoesNotExist:
-            wh_class = None
-        if wh_class is None:
-            class_id = (
-                solar_system.wormhole_class_id_raw
-                or (solar_system.constellation and solar_system.constellation.wormhole_class_id_raw)
-            )
-            wh_class = wh_classes_by_id.get(class_id)
-        return wh_class
-
     systems_by_id = {}
     for s in qs:
         if s.solar_system_id not in systems_by_id:
-            wh_class = _resolve_wh_class(s.solar_system)
+            wh_class = _resolve_wh_class(s.solar_system, wh_classes_by_id)
             try:
                 effect = s.solar_system.wormhole_info.effect
                 statics = sorted(s.solar_system.wormhole_info.statics.all(), key=lambda x: x.code)
@@ -219,10 +220,9 @@ def structures(request):
         ):
             system["last_updated"] = s.last_seen_at
 
-    modifiers_by_effect: dict[str, list[str]] = {}
+    modifiers_by_effect: dict[str, list[EffectModifier]] = {}
     for m in EffectModifier.objects.select_related("effect").order_by("-is_positive", "name"):
-        sign = "+" if m.is_positive else "−"
-        modifiers_by_effect.setdefault(m.effect.name, []).append(f"{sign} {m.name}")
+        modifiers_by_effect.setdefault(m.effect.name, []).append(m)
 
     systems = []
     for system in systems_by_id.values():
@@ -235,8 +235,15 @@ def structures(request):
         effect = system["effect"]
         if effect:
             mods = modifiers_by_effect.get(effect.name, [])
-            system["effect_color"] = Effect.COLORS.get(effect.name, "#6c757d")
-            system["effect_tooltip"] = "\n".join([effect.name] + mods)
+            wh_class = system["wh_class"]
+            effect_power = wh_class.effect_power if wh_class else None
+            lines = [effect.name]
+            for m in mods:
+                magnitude = m.magnitude_for(effect_power)
+                label = f"{m.name}: {magnitude}" if magnitude else m.name
+                lines.append(label)
+            system["effect_color"] = effect.color or "#6c757d"
+            system["effect_tooltip"] = "\n".join(lines)
         systems.append(system)
 
     # Most recently updated system first. A missing last_updated shouldn't happen
@@ -262,7 +269,7 @@ def structures(request):
     )
     presets = list(StructureFilterPreset.objects.values(
         "id", "name", "solar_system_ids", "corporation_ids", "alliance_ids",
-        "wh_class_ids", "static_leads_to_ids", "effect_names", "created_by_id",
+        "wh_class_ids", "static_leads_to_ids", "effect_names", "filter_mode", "created_by_id",
     ))
 
     wh_classes_all = list(WormholeClass.objects.filter(
@@ -346,11 +353,7 @@ def system_detail(request, solar_system_id: int):
         effect = None
     if wh_class is None:
         wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
-        class_id = (
-            solar_system.wormhole_class_id_raw
-            or (solar_system.constellation and solar_system.constellation.wormhole_class_id_raw)
-        )
-        wh_class = wh_classes_by_id.get(class_id)
+        wh_class = _resolve_wh_class(solar_system, wh_classes_by_id)
 
     qs = Structure.objects.filter(solar_system=solar_system).select_related(
         "last_source_map"
@@ -484,6 +487,10 @@ def preset_save(request):
     if not name:
         return JsonResponse({"error": "Name is required"}, status=400)
 
+    filter_mode = data.get("filter_mode", "or")
+    if filter_mode not in ("or", "and"):
+        filter_mode = "or"
+
     preset, created = StructureFilterPreset.objects.update_or_create(
         name=name,
         defaults={
@@ -494,6 +501,7 @@ def preset_save(request):
             "wh_class_ids": data.get("wh_class_ids", []),
             "static_leads_to_ids": data.get("static_leads_to_ids", []),
             "effect_names": data.get("effect_names", []),
+            "filter_mode": filter_mode,
         },
     )
     return JsonResponse({
@@ -506,6 +514,7 @@ def preset_save(request):
         "wh_class_ids": preset.wh_class_ids,
         "static_leads_to_ids": preset.static_leads_to_ids,
         "effect_names": preset.effect_names,
+        "filter_mode": preset.filter_mode,
         "created_by_id": preset.created_by_id,
     })
 

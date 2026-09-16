@@ -153,14 +153,13 @@ class WandererManagedMap(models.Model):
 
     def get_user_account(self, user: User) -> Optional["WandererAccount"]:
         """Returns the user account associated to this map if it exists"""
-        try:
-            return WandererAccount.objects.get(user=user, wanderer_map=self)
-        except WandererAccount.DoesNotExist:
-            return None
+        return WandererAccount.objects.filter(user=user, wanderer_map=self).first()
 
     def delete_user(self, user: User):
         """Removes the user characters from the map and then deletes the associated account"""
         wanderer_account = self.get_user_account(user)
+        if wanderer_account is None:
+            return
         for character_to_remove_id in wanderer_account.get_all_character_ids():
             try:
                 self.remove_member_from_access_list(character_to_remove_id)
@@ -197,7 +196,9 @@ class WandererManagedMap(models.Model):
         Returns a list of all character ids of accounts linked to this map
         """
         return list(
-            self.accounts.values_list(
+            self.accounts.exclude(
+                user__character_ownerships=None
+            ).values_list(
                 "user__character_ownerships__character__character_id", flat=True
             )
         )
@@ -384,6 +385,10 @@ class StructureHistory(StructureFieldsMixin, models.Model):
 class StructureFilterPreset(models.Model):
     """A saved set of structure filter IDs."""
 
+    class FilterMode(models.TextChoices):
+        OR = "or", _("OR (match any)")
+        AND = "and", _("AND (match all)")
+
     name = models.CharField(max_length=100, unique=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="+"
@@ -394,6 +399,12 @@ class StructureFilterPreset(models.Model):
     wh_class_ids = models.JSONField(default=list, blank=True)
     static_leads_to_ids = models.JSONField(default=list, blank=True)
     effect_names = models.JSONField(default=list, blank=True)
+    filter_mode = models.CharField(
+        max_length=3,
+        choices=FilterMode.choices,
+        default=FilterMode.OR,
+        help_text=_("Whether entity filters (system/corp/alliance) are combined with OR or AND logic."),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

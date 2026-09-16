@@ -15,6 +15,8 @@ from wanderer.wanderer import AccessListRoles, get_map_structures
 
 ESI_BASE = "https://esi.evetech.net/latest"
 
+logger = get_extension_logger(__name__)
+
 
 def _str(payload: dict, key: str) -> str:
     """
@@ -30,7 +32,6 @@ def _str(payload: dict, key: str) -> str:
 
 def _fetch_alliance_for_corp(corp_id: str) -> tuple[str, str, str]:
     """Returns (alliance_name, alliance_ticker, alliance_id) from ESI, or empty strings on failure."""
-    logger = get_extension_logger(__name__)
     try:
         r = http_requests.get(f"{ESI_BASE}/corporations/{corp_id}/", timeout=10)
         r.raise_for_status()
@@ -68,9 +69,6 @@ def _resolve_alliance_for_corp(corp_id: str, local_corps: dict) -> tuple[str, st
             str(local_corp.alliance.alliance_id),
         )
     return _fetch_alliance_for_corp(corp_id)
-
-
-logger = get_extension_logger(__name__)
 
 
 @shared_task
@@ -179,14 +177,10 @@ def cleanup_access_list(wanderer_managed_map_id: int):
         wanderer_managed_map.add_character_to_acl(character_id_to_add)
 
     non_member_characters = wanderer_managed_map.get_non_member_characters()
-    character_ids_to_set_on_member = [
-        non_member_character[0]
-        for non_member_character in non_member_characters
-        if non_member_character[1]
-        not in [AccessListRoles.ADMIN, AccessListRoles.MANAGER, AccessListRoles.MEMBER]
-    ]
-    for character_id_to_set_on_member in character_ids_to_set_on_member:
-        wanderer_managed_map.set_character_to_member(character_id_to_set_on_member)
+    privileged_roles = {AccessListRoles.ADMIN, AccessListRoles.MANAGER, AccessListRoles.MEMBER}
+    for char_id, role in non_member_characters:
+        if role not in privileged_roles:
+            wanderer_managed_map.set_character_to_member(char_id)
 
 
 @shared_task(soft_time_limit=300, time_limit=360)

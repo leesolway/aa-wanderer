@@ -77,26 +77,25 @@ def reconcile_structures() -> None:
 
         existing = existing_by_key.get(key)
         if existing is None:
-            new_structures.append(
-                Structure(
-                    solar_system_id=solar_system_id,
-                    name=name,
-                    structure_type_id=structure_type_id,
-                    structure_type=latest.structure_type,
-                    owner_name=latest.owner_name,
-                    owner_ticker=latest.owner_ticker,
-                    owner_id=latest.owner_id,
-                    alliance_name=latest.alliance_name,
-                    alliance_ticker=latest.alliance_ticker,
-                    alliance_id=latest.alliance_id,
-                    status=latest.status,
-                    end_time=latest.end_time,
-                    notes=latest.notes,
-                    last_seen_at=latest_freshness,
-                    last_source_map=latest.map,
-                    is_active=True,
-                )
+            new_struct = Structure(
+                solar_system_id=solar_system_id,
+                name=name,
+                structure_type_id=structure_type_id,
+                structure_type=latest.structure_type,
+                owner_name=latest.owner_name,
+                owner_ticker=latest.owner_ticker,
+                owner_id=latest.owner_id,
+                alliance_name=latest.alliance_name,
+                alliance_ticker=latest.alliance_ticker,
+                alliance_id=latest.alliance_id,
+                status=latest.status,
+                end_time=latest.end_time,
+                notes=latest.notes,
+                last_seen_at=latest_freshness,
+                last_source_map=latest.map,
+                is_active=True,
             )
+            new_structures.append(new_struct)
             continue
 
         changed_fields = [
@@ -147,7 +146,18 @@ def reconcile_structures() -> None:
             removed_count += 1
 
     # Execute all changes in bulk — O(1) queries regardless of structure count.
-    Structure.objects.bulk_create(new_structures)
+    # bulk_create returns objects with PKs populated (PostgreSQL always; Django ≥4.1 for others),
+    # which lets us immediately create CREATED history entries without a round-trip.
+    created_structures = Structure.objects.bulk_create(new_structures)
+    for new_struct in created_structures:
+        histories_to_create.append(
+            StructureHistory(
+                structure=new_struct,
+                change_type=StructureHistory.ChangeType.CREATED,
+                changed_fields=[],
+                **{field: getattr(new_struct, field) for field in STRUCTURE_TRACKED_FIELDS},
+            )
+        )
     if structures_to_update:
         Structure.objects.bulk_update(
             structures_to_update,

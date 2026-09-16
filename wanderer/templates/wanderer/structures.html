@@ -377,8 +377,7 @@ function applyPreset(preset) {
     (preset.wh_class_ids || []).forEach(id => url.searchParams.append('wh_class_id', id));
     (preset.static_leads_to_ids || []).forEach(id => url.searchParams.append('static_leads_to', id));
     (preset.effect_names || []).forEach(name => url.searchParams.append('effect_name', name));
-    const filterMode = document.querySelector('input[name="filter_mode"]:checked');
-    if (filterMode && filterMode.value === 'and') {
+    if ((preset.filter_mode || 'or') === 'and') {
         url.searchParams.set('filter_mode', 'and');
     }
     window.location.href = url.toString();
@@ -388,6 +387,7 @@ function savePreset() {
     const name = document.getElementById('preset-name-input').value.trim();
     if (!name) { alert('{% translate "Please enter a preset name." %}'); return; }
 
+    const filterModeEl = document.querySelector('input[name="filter_mode"]:checked');
     const payload = {
         name,
         solar_system_ids: tsSystems.getValue(),
@@ -396,6 +396,7 @@ function savePreset() {
         wh_class_ids: tsWhClass.getValue(),
         static_leads_to_ids: tsStaticLeadsTo.getValue(),
         effect_names: tsEffect.getValue(),
+        filter_mode: filterModeEl ? filterModeEl.value : 'or',
     };
 
     fetch('{% url "wanderer:preset_save" %}', {

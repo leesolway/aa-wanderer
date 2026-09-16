@@ -59,10 +59,8 @@ class WandererManagedMapService(ServicesHook):
             if notify_user:
                 Notification.objects.notify_user(
                     user,
-                    _(f"Account removed from {map_name}"),
-                    _(
-                        f"Your characters have been removed from the wanderer map {map_name}"
-                    ),
+                    _("Account removed from %(name)s") % {"name": map_name},
+                    _("Your characters have been removed from the wanderer map %(name)s") % {"name": map_name},
                     Notification.Level.WARNING,
                 )
             return True
@@ -99,8 +97,8 @@ def add_del_callback(*args, **kwargs):
                 # this is a known map so remove it from our list of knowns
                 map_add.remove(h.managed_map)
             else:
-                # This one was deleted remove the hook.
-                del h
+                # This one was deleted; hooks can only be fully removed by restarting auth.
+                pass
 
     # Loop to setup what is missing ( or everything on first boot )
     for map in map_add:

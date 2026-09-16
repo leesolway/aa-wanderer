@@ -101,7 +101,8 @@ class StructureHistoryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(StructureFilterPreset)
 class StructureFilterPresetAdmin(admin.ModelAdmin):
-    list_display = ["name", "created_by", "created_at"]
+    list_display = ["name", "filter_mode", "created_by", "created_at"]
+    list_filter = ["filter_mode"]
     search_fields = ["name"]
     readonly_fields = ["created_by", "created_at"]
 
