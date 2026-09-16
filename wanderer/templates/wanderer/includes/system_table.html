@@ -11,6 +11,7 @@
                     <tr>
                         <th>{% translate "Solar System" %}</th>
                         <th>{% translate "WH Class" %}</th>
+                        <th>{% translate "Statics" %}</th>
                         <th>{% translate "Effect" %}</th>
                         <th>{% translate "Structures" %}</th>
                         <th>{% translate "Corporations" %}</th>
@@ -34,6 +35,15 @@
                                 {% else %}
                                     <span class="text-muted">&mdash;</span>
                                 {% endif %}
+                            </td>
+                            <td>
+                                {% for static in system.statics %}
+                                    {% for cls in static.leads_to.all %}
+                                        <span class="badge bg-secondary">{{ cls.short_name }}</span>
+                                    {% endfor %}
+                                {% empty %}
+                                    <span class="text-muted">&mdash;</span>
+                                {% endfor %}
                             </td>
                             <td>
                                 {% if system.effect %}

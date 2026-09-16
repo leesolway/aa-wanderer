@@ -15,7 +15,7 @@ from eve_sde.models import SolarSystem
 
 from allianceauth.eveonline.models import EveAllianceInfo, EveCorporationInfo
 
-from wormholes.models import WormholeClass, WormholeSystem
+from wormholes.models import Effect, WormholeClass, WormholeSystem
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import (
@@ -36,6 +36,39 @@ def _structure_filters(request) -> tuple[list[str], list[str], list[str]]:
     return system_ids, corp_ids, alliance_ids
 
 
+def _wh_filters(request) -> tuple[list[str], list[str], list[str]]:
+    wh_class_ids = [v for v in request.GET.getlist("wh_class_id") if v.strip()]
+    static_leads_to_ids = [v for v in request.GET.getlist("static_leads_to") if v.strip()]
+    effect_names = [v for v in request.GET.getlist("effect_name") if v.strip()]
+    return wh_class_ids, static_leads_to_ids, effect_names
+
+
+def _merge_entity_rows(known_rows, structure_qs, id_key, name_key, ticker_key, limit=None):
+    """
+    Merge {id_key, name_key, ticker_key} dicts already known to AllianceAuth with
+    matching rows sourced from Structure (for corps/alliances AA doesn't track,
+    e.g. non-member owners of a structure on a tracked map), deduped by id with
+    the known rows taking priority. Optionally capped at `limit` rows total.
+    """
+    seen = set()
+    merged = []
+    for row in known_rows:
+        if row[id_key] in seen:
+            continue
+        seen.add(row[id_key])
+        merged.append(row)
+        if limit and len(merged) >= limit:
+            return merged
+    for row in structure_qs.values(id_key, name_key, ticker_key).distinct():
+        if row[id_key] in seen:
+            continue
+        seen.add(row[id_key])
+        merged.append(row)
+        if limit and len(merged) >= limit:
+            break
+    return merged
+
+
 def _selected_filter_labels(system_ids, corp_ids, alliance_ids):
     """Pre-populate Tom Select option labels for filter values already in the URL."""
     selected_systems = []
@@ -46,29 +79,23 @@ def _selected_filter_labels(system_ids, corp_ids, alliance_ids):
 
     selected_corps = []
     if corp_ids:
-        seen = set()
-        for c in EveCorporationInfo.objects.filter(corporation_id__in=corp_ids):
-            cid = str(c.corporation_id)
-            if cid not in seen:
-                seen.add(cid)
-                selected_corps.append({"owner_id": cid, "owner_name": c.corporation_name, "owner_ticker": c.corporation_ticker})
-        for row in Structure.objects.filter(owner_id__in=corp_ids).values("owner_id", "owner_name", "owner_ticker").distinct():
-            if row["owner_id"] not in seen:
-                seen.add(row["owner_id"])
-                selected_corps.append(row)
+        known = (
+            {"owner_id": str(c.corporation_id), "owner_name": c.corporation_name, "owner_ticker": c.corporation_ticker}
+            for c in EveCorporationInfo.objects.filter(corporation_id__in=corp_ids)
+        )
+        selected_corps = _merge_entity_rows(
+            known, Structure.objects.filter(owner_id__in=corp_ids), "owner_id", "owner_name", "owner_ticker"
+        )
 
     selected_alliances = []
     if alliance_ids:
-        seen = set()
-        for a in EveAllianceInfo.objects.filter(alliance_id__in=alliance_ids):
-            aid = str(a.alliance_id)
-            if aid not in seen:
-                seen.add(aid)
-                selected_alliances.append({"alliance_id": aid, "alliance_name": a.alliance_name, "alliance_ticker": a.alliance_ticker})
-        for row in Structure.objects.filter(alliance_id__in=alliance_ids).values("alliance_id", "alliance_name", "alliance_ticker").distinct():
-            if row["alliance_id"] not in seen:
-                seen.add(row["alliance_id"])
-                selected_alliances.append(row)
+        known = (
+            {"alliance_id": str(a.alliance_id), "alliance_name": a.alliance_name, "alliance_ticker": a.alliance_ticker}
+            for a in EveAllianceInfo.objects.filter(alliance_id__in=alliance_ids)
+        )
+        selected_alliances = _merge_entity_rows(
+            known, Structure.objects.filter(alliance_id__in=alliance_ids), "alliance_id", "alliance_name", "alliance_ticker"
+        )
 
     return selected_systems, selected_corps, selected_alliances
 
@@ -78,6 +105,7 @@ def _selected_filter_labels(system_ids, corp_ids, alliance_ids):
 def structures(request):
     """List solar systems that have at least one currently-active structure."""
     system_ids, corp_ids, alliance_ids = _structure_filters(request)
+    wh_class_ids, static_leads_to_ids, effect_names = _wh_filters(request)
 
     wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
 
@@ -86,7 +114,7 @@ def structures(request):
         "solar_system__constellation",
         "solar_system__wormhole_info",
         "solar_system__wormhole_info__effect",
-    )
+    ).prefetch_related("solar_system__wormhole_info__statics__leads_to")
 
     if system_ids or corp_ids or alliance_ids:
         q = Q()
@@ -97,6 +125,13 @@ def structures(request):
         if alliance_ids:
             q |= Q(alliance_id__in=alliance_ids)
         qs = qs.filter(q)
+
+    if wh_class_ids:
+        qs = qs.filter(solar_system__wormhole_info__wormhole_class__class_id__in=wh_class_ids)
+    if static_leads_to_ids:
+        qs = qs.filter(solar_system__wormhole_info__statics__leads_to__class_id__in=static_leads_to_ids).distinct()
+    if effect_names:
+        qs = qs.filter(solar_system__wormhole_info__effect__name__in=effect_names)
 
     def _resolve_wh_class(solar_system):
         """Return WormholeClass for a system, falling back to constellation class_id."""
@@ -118,8 +153,10 @@ def structures(request):
             wh_class = _resolve_wh_class(s.solar_system)
             try:
                 effect = s.solar_system.wormhole_info.effect
+                statics = sorted(s.solar_system.wormhole_info.statics.all(), key=lambda x: x.code)
             except WormholeSystem.DoesNotExist:
                 effect = None
+                statics = []
             systems_by_id[s.solar_system_id] = {
                 "solar_system": s.solar_system,
                 "structure_count": 0,
@@ -128,6 +165,7 @@ def structures(request):
                 "last_updated": None,
                 "wh_class": wh_class,
                 "effect": effect,
+                "statics": statics,
             }
         system = systems_by_id[s.solar_system_id]
         system["structure_count"] += 1
@@ -169,6 +207,17 @@ def structures(request):
     )
     presets = list(StructureFilterPreset.objects.values("id", "name", "solar_system_ids", "corporation_ids", "alliance_ids", "created_by_id"))
 
+    wh_classes_all = list(WormholeClass.objects.filter(
+        category__in=[
+            WormholeClass.Category.NUMBERED,
+            WormholeClass.Category.SHATTERED_FRIGATE,
+            WormholeClass.Category.DRIFTER,
+            WormholeClass.Category.THERA,
+            WormholeClass.Category.POCHVEN,
+        ]
+    ).order_by("class_id"))
+    effects_all = list(Effect.objects.all())
+
     return render(
         request,
         "wanderer/structures.html",
@@ -177,11 +226,16 @@ def structures(request):
             "system_ids": system_ids,
             "corp_ids": corp_ids,
             "alliance_ids": alliance_ids,
+            "wh_class_ids": wh_class_ids,
+            "static_leads_to_ids": static_leads_to_ids,
+            "effect_names": effect_names,
             "selected_systems": selected_systems,
             "selected_corps": selected_corps,
             "selected_alliances": selected_alliances,
-            "active_filters": bool(system_ids or corp_ids or alliance_ids),
+            "active_filters": bool(system_ids or corp_ids or alliance_ids or wh_class_ids or static_leads_to_ids or effect_names),
             "presets": presets,
+            "wh_classes_all": wh_classes_all,
+            "effects_all": effects_all,
         },
     )
 
@@ -280,29 +334,25 @@ def autocomplete_corporations(request):
     corp_qs = EveCorporationInfo.objects.all()
     if q:
         corp_qs = corp_qs.filter(Q(corporation_name__icontains=q) | Q(corporation_ticker__icontains=q))
-    corps = list(corp_qs.order_by("corporation_name")[:20])
-    seen_ids = {str(c.corporation_id) for c in corps}
-    results = [
-        {
-            "value": str(c.corporation_id),
-            "text": f"{c.corporation_name} [{c.corporation_ticker}]" if c.corporation_ticker else c.corporation_name,
-        }
-        for c in corps
-    ]
+    known = (
+        {"owner_id": str(c.corporation_id), "owner_name": c.corporation_name, "owner_ticker": c.corporation_ticker}
+        for c in corp_qs.order_by("corporation_name")[:20]
+    )
 
     # Supplement with Structure data for corps not in EveCorporationInfo
-    if len(results) < 20:
-        struct_qs = Structure.objects.exclude(owner_id="").exclude(owner_name="")
-        if q:
-            struct_qs = struct_qs.filter(Q(owner_name__icontains=q) | Q(owner_ticker__icontains=q))
-        for row in struct_qs.values("owner_id", "owner_name", "owner_ticker").distinct().order_by("owner_name"):
-            if row["owner_id"] not in seen_ids and len(results) < 20:
-                seen_ids.add(row["owner_id"])
-                results.append({
-                    "value": row["owner_id"],
-                    "text": f"{row['owner_name']} [{row['owner_ticker']}]" if row["owner_ticker"] else row["owner_name"],
-                })
+    struct_qs = Structure.objects.exclude(owner_id="").exclude(owner_name="")
+    if q:
+        struct_qs = struct_qs.filter(Q(owner_name__icontains=q) | Q(owner_ticker__icontains=q))
+    struct_qs = struct_qs.order_by("owner_name")
 
+    rows = _merge_entity_rows(known, struct_qs, "owner_id", "owner_name", "owner_ticker", limit=20)
+    results = [
+        {
+            "value": r["owner_id"],
+            "text": f"{r['owner_name']} [{r['owner_ticker']}]" if r["owner_ticker"] else r["owner_name"],
+        }
+        for r in rows
+    ]
     return JsonResponse({"results": results})
 
 
@@ -314,29 +364,25 @@ def autocomplete_alliances(request):
     alliance_qs = EveAllianceInfo.objects.all()
     if q:
         alliance_qs = alliance_qs.filter(Q(alliance_name__icontains=q) | Q(alliance_ticker__icontains=q))
-    alliances = list(alliance_qs.order_by("alliance_name")[:20])
-    seen_ids = {str(a.alliance_id) for a in alliances}
-    results = [
-        {
-            "value": str(a.alliance_id),
-            "text": f"{a.alliance_name} [{a.alliance_ticker}]" if a.alliance_ticker else a.alliance_name,
-        }
-        for a in alliances
-    ]
+    known = (
+        {"alliance_id": str(a.alliance_id), "alliance_name": a.alliance_name, "alliance_ticker": a.alliance_ticker}
+        for a in alliance_qs.order_by("alliance_name")[:20]
+    )
 
     # Supplement with Structure data for alliances not in EveAllianceInfo
-    if len(results) < 20:
-        struct_qs = Structure.objects.exclude(alliance_id="").exclude(alliance_name="")
-        if q:
-            struct_qs = struct_qs.filter(Q(alliance_name__icontains=q) | Q(alliance_ticker__icontains=q))
-        for row in struct_qs.values("alliance_id", "alliance_name", "alliance_ticker").distinct().order_by("alliance_name"):
-            if row["alliance_id"] not in seen_ids and len(results) < 20:
-                seen_ids.add(row["alliance_id"])
-                results.append({
-                    "value": row["alliance_id"],
-                    "text": f"{row['alliance_name']} [{row['alliance_ticker']}]" if row["alliance_ticker"] else row["alliance_name"],
-                })
+    struct_qs = Structure.objects.exclude(alliance_id="").exclude(alliance_name="")
+    if q:
+        struct_qs = struct_qs.filter(Q(alliance_name__icontains=q) | Q(alliance_ticker__icontains=q))
+    struct_qs = struct_qs.order_by("alliance_name")
 
+    rows = _merge_entity_rows(known, struct_qs, "alliance_id", "alliance_name", "alliance_ticker", limit=20)
+    results = [
+        {
+            "value": r["alliance_id"],
+            "text": f"{r['alliance_name']} [{r['alliance_ticker']}]" if r["alliance_ticker"] else r["alliance_name"],
+        }
+        for r in rows
+    ]
     return JsonResponse({"results": results})
 
 

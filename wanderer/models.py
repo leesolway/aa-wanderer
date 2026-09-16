@@ -222,25 +222,17 @@ class WandererManagedMap(models.Model):
         )
 
 
-class MapStructure(models.Model):
-    """A structure synced from a Wanderer map."""
+class StructureFieldsMixin(models.Model):
+    """
+    Owner/alliance/status fields shared by MapStructure (raw per-map ingest),
+    Structure (deduplicated view) and StructureHistory (point-in-time snapshot).
+    Centralized here so the three tables that reconcile_structures() diffs and
+    copies field-by-field can't drift apart on max_length/blank.
+    """
 
-    wanderer_id = models.CharField(max_length=100, unique=True)
-    map = models.ForeignKey(
-        WandererManagedMap,
-        on_delete=models.CASCADE,
-        related_name="structures",
-    )
     name = models.CharField(max_length=255, blank=True)
     structure_type = models.CharField(max_length=100, blank=True)
     structure_type_id = models.CharField(max_length=50, blank=True)
-    solar_system = models.ForeignKey(
-        "eve_sde.SolarSystem",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="+",
-    )
     owner_name = models.CharField(max_length=255, blank=True)
     owner_ticker = models.CharField(max_length=10, blank=True)
     owner_id = models.CharField(max_length=50, blank=True)
@@ -250,6 +242,27 @@ class MapStructure(models.Model):
     status = models.CharField(max_length=50, blank=True)
     end_time = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True)
+
+    class Meta:
+        abstract = True
+
+
+class MapStructure(StructureFieldsMixin, models.Model):
+    """A structure synced from a Wanderer map."""
+
+    wanderer_id = models.CharField(max_length=100, unique=True)
+    map = models.ForeignKey(
+        WandererManagedMap,
+        on_delete=models.CASCADE,
+        related_name="structures",
+    )
+    solar_system = models.ForeignKey(
+        "eve_sde.SolarSystem",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     inserted_at = models.DateTimeField(null=True, blank=True)
     structure_updated_at = models.DateTimeField(
         null=True,
@@ -294,7 +307,7 @@ STRUCTURE_TRACKED_FIELDS = [
 ]
 
 
-class Structure(models.Model):
+class Structure(StructureFieldsMixin, models.Model):
     """
     A real-world structure, deduplicated across every source map.
 
@@ -309,19 +322,9 @@ class Structure(models.Model):
         on_delete=models.CASCADE,
         related_name="+",
     )
+    # Overrides StructureFieldsMixin.name: required here (always populated by
+    # reconciliation), unlike the raw/snapshot rows it's shared with.
     name = models.CharField(max_length=255)
-    structure_type = models.CharField(max_length=100, blank=True)
-    structure_type_id = models.CharField(max_length=50, blank=True)
-
-    owner_name = models.CharField(max_length=255, blank=True)
-    owner_ticker = models.CharField(max_length=10, blank=True)
-    owner_id = models.CharField(max_length=50, blank=True)
-    alliance_name = models.CharField(max_length=255, blank=True)
-    alliance_ticker = models.CharField(max_length=10, blank=True)
-    alliance_id = models.CharField(max_length=50, blank=True)
-    status = models.CharField(max_length=50, blank=True)
-    end_time = models.DateTimeField(null=True, blank=True)
-    notes = models.TextField(blank=True)
 
     first_seen_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(null=True, blank=True)
@@ -354,7 +357,7 @@ class Structure(models.Model):
         ]
 
 
-class StructureHistory(models.Model):
+class StructureHistory(StructureFieldsMixin, models.Model):
     """
     An archived snapshot of a Structure's fields, recorded right before they
     changed (or right before the structure was marked removed).
@@ -372,20 +375,6 @@ class StructureHistory(models.Model):
     recorded_at = models.DateTimeField(auto_now_add=True)
     change_type = models.CharField(max_length=20, choices=ChangeType.choices)
     changed_fields = models.JSONField(default=list, blank=True)
-
-    # Snapshot of the structure's data fields as they were right before this change.
-    name = models.CharField(max_length=255, blank=True)
-    structure_type = models.CharField(max_length=100, blank=True)
-    structure_type_id = models.CharField(max_length=50, blank=True)
-    owner_name = models.CharField(max_length=255, blank=True)
-    owner_ticker = models.CharField(max_length=10, blank=True)
-    owner_id = models.CharField(max_length=50, blank=True)
-    alliance_name = models.CharField(max_length=255, blank=True)
-    alliance_ticker = models.CharField(max_length=10, blank=True)
-    alliance_id = models.CharField(max_length=50, blank=True)
-    status = models.CharField(max_length=50, blank=True)
-    end_time = models.DateTimeField(null=True, blank=True)
-    notes = models.TextField(blank=True)
 
     def __str__(self):
         return f"{self.structure} - {self.get_change_type_display()} @ {self.recorded_at}"

@@ -1,41 +1,10 @@
 {% extends "allianceauth/base-bs5.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block extra_css %}
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
+<link href="{% static 'wanderer/css/tom-select-theme.css' %}" rel="stylesheet">
 <style>
-    /* Ensure Tom Select respects the active Bootstrap theme (light/dark) */
-    .ts-wrapper .ts-control {
-        background-color: var(--bs-body-bg);
-        color: var(--bs-body-color);
-        border-color: var(--bs-border-color);
-    }
-    .ts-wrapper.focus .ts-control {
-        border-color: var(--bs-primary);
-        box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
-    }
-    .ts-wrapper .ts-dropdown {
-        background-color: var(--bs-body-bg);
-        color: var(--bs-body-color);
-        border-color: var(--bs-border-color);
-    }
-    .ts-wrapper .ts-dropdown .option {
-        color: var(--bs-body-color);
-    }
-    .ts-wrapper .ts-dropdown .option.active,
-    .ts-wrapper .ts-dropdown .option:hover {
-        background-color: var(--bs-primary);
-        color: #fff;
-    }
-    .ts-wrapper.multi .ts-control > div {
-        background-color: var(--bs-primary);
-        color: #fff;
-        border-radius: 4px;
-    }
-    .ts-wrapper.multi .ts-control > div .remove {
-        color: #fff;
-        border-left-color: rgba(255,255,255,0.3);
-    }
     .preset-badge { cursor: pointer; }
 </style>
 {% endblock extra_css %}
@@ -98,6 +67,32 @@
 
                 <!-- Filter inputs -->
                 <form method="get" action="{% url 'wanderer:structures' %}" id="filter-form">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">{% translate "WH Class" %}</label>
+                            <select id="id_wh_class" name="wh_class_id" multiple placeholder="{% translate 'Any class…' %}">
+                                {% for cls in wh_classes_all %}
+                                    <option value="{{ cls.class_id }}" {% if cls.class_id|stringformat:"s" in wh_class_ids %}selected{% endif %}>{{ cls.short_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">{% translate "Static (leads to)" %}</label>
+                            <select id="id_static_leads_to" name="static_leads_to" multiple placeholder="{% translate 'Any static…' %}">
+                                {% for cls in wh_classes_all %}
+                                    <option value="{{ cls.class_id }}" {% if cls.class_id|stringformat:"s" in static_leads_to_ids %}selected{% endif %}>{{ cls.short_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">{% translate "Effect" %}</label>
+                            <select id="id_effect" name="effect_name" multiple placeholder="{% translate 'Any effect…' %}">
+                                {% for effect in effects_all %}
+                                    <option value="{{ effect.name }}" {% if effect.name in effect_names %}selected{% endif %}>{{ effect.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">{% translate "Solar Systems" %}</label>
                         <select id="id_solar_system" name="system_id" multiple placeholder="{% translate 'Search solar systems…' %}">
@@ -175,6 +170,18 @@ function makeTomSelect(id, url) {
 const tsSystems = makeTomSelect('id_solar_system', '{% url "wanderer:autocomplete_solar_systems" %}');
 const tsCorps = makeTomSelect('id_corporation', '{% url "wanderer:autocomplete_corporations" %}');
 const tsAlliances = makeTomSelect('id_alliance', '{% url "wanderer:autocomplete_alliances" %}');
+
+['id_wh_class', 'id_static_leads_to', 'id_effect'].forEach(id => {
+    new TomSelect('#' + id, {
+        plugins: ['remove_button'],
+        create: false,
+        render: {
+            no_results: function() {
+                return '<div class="no-results">{% translate "No results found" %}</div>';
+            }
+        }
+    });
+});
 
 function renderPresets() {
     const modalContainer = document.getElementById('preset-badges');

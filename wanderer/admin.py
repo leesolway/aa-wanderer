@@ -13,6 +13,17 @@ from wanderer.models import (
 from wanderer.wanderer import create_acl_associated_to_map
 
 
+class ReadOnlyAdminMixin:
+    """Admin mixin for models whose data is entirely managed by wanderer's sync/
+    reconciliation tasks and must only ever be viewed, never hand-edited or added."""
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(WandererManagedMap)
 class WandererManagedMapAdmin(admin.ModelAdmin):
     list_display = ["name", "wanderer_url", "map_slug", "sync_structures"]
@@ -50,17 +61,11 @@ class WandererManagedMapAdmin(admin.ModelAdmin):
 
 
 @admin.register(MapStructure)
-class MapStructureAdmin(admin.ModelAdmin):
+class MapStructureAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ["name", "structure_type", "solar_system", "owner_name", "owner_ticker", "alliance_name", "status", "inserted_at", "map", "last_synced"]
     list_filter = ["map", "status", "structure_type"]
     search_fields = ["name", "solar_system__name", "owner_name", "owner_ticker"]
     readonly_fields = [f.name for f in MapStructure._meta.get_fields() if hasattr(f, "name")]
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
 
 
 class StructureHistoryInline(admin.TabularInline):
@@ -76,7 +81,7 @@ class StructureHistoryInline(admin.TabularInline):
 
 
 @admin.register(Structure)
-class StructureAdmin(admin.ModelAdmin):
+class StructureAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ["name", "structure_type", "solar_system", "owner_name", "owner_ticker", "alliance_name", "status", "is_active", "last_seen_at", "removed_at", "last_source_map"]
     list_filter = ["is_active", "status", "structure_type"]
     search_fields = ["name", "solar_system__name", "owner_name", "owner_ticker"]
@@ -85,25 +90,13 @@ class StructureAdmin(admin.ModelAdmin):
     readonly_fields = [f.name for f in Structure._meta.fields]
     inlines = [StructureHistoryInline]
 
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
 
 @admin.register(StructureHistory)
-class StructureHistoryAdmin(admin.ModelAdmin):
+class StructureHistoryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
     list_display = ["structure", "change_type", "recorded_at", "owner_name", "alliance_name"]
     list_filter = ["change_type"]
     search_fields = ["structure__name", "owner_name", "alliance_name"]
     readonly_fields = [f.name for f in StructureHistory._meta.fields]
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
 
 
 @admin.register(StructureFilterPreset)

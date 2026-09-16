@@ -5,6 +5,7 @@ from celery import chain, shared_task
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
+from allianceauth.eveonline.models import EveCorporationInfo
 from allianceauth.services.hooks import get_extension_logger
 from eve_sde.models import SolarSystem
 
@@ -43,6 +44,31 @@ def _fetch_alliance_for_corp(corp_id: str) -> tuple[str, str, str]:
     except Exception:
         logger.warning("Failed to fetch alliance for corp %s", corp_id, exc_info=True)
         return "", "", ""
+
+
+def _resolve_alliance_for_corp(corp_id: str, local_corps: dict) -> tuple[str, str, str]:
+    """
+    Returns (alliance_name, alliance_ticker, alliance_id) for a structure's owner corp.
+
+    Prefers AllianceAuth's own EveCorporationInfo/EveAllianceInfo data - no network
+    call, and correctly reports "not in an alliance" as empty strings instead of
+    treating it as a failure. Only falls back to a live ESI lookup for corps
+    AllianceAuth doesn't track locally (e.g. a non-member corp that happens to own
+    a structure on a tracked map).
+    """
+    if not corp_id:
+        return "", "", ""
+    local_corp = local_corps.get(corp_id)
+    if local_corp is not None:
+        if local_corp.alliance_id is None:
+            return "", "", ""
+        return (
+            local_corp.alliance.alliance_name,
+            local_corp.alliance.alliance_ticker,
+            str(local_corp.alliance.alliance_id),
+        )
+    return _fetch_alliance_for_corp(corp_id)
+
 
 logger = get_extension_logger(__name__)
 
@@ -188,6 +214,14 @@ def sync_map_structures(wanderer_managed_map_id: int):
     solar_system_ids = {s.get("solar_system_id") for s in structures if s.get("solar_system_id")}
     solar_systems: dict = {ss.id: ss for ss in SolarSystem.objects.filter(id__in=solar_system_ids)}
 
+    # Pre-fetch AllianceAuth's own corp/alliance data for every owner corp seen here,
+    # so _resolve_alliance_for_corp only needs to hit ESI for corps AA doesn't track.
+    owner_ids = {_str(s, "owner_id") for s in structures if s.get("owner_id")}
+    local_corps: dict = {
+        str(c.corporation_id): c
+        for c in EveCorporationInfo.objects.filter(corporation_id__in=owner_ids).select_related("alliance")
+    }
+
     seen_ids = set()
     failed = 0
     alliance_cache = {}
@@ -197,9 +231,7 @@ def sync_map_structures(wanderer_managed_map_id: int):
         try:
             owner_id = _str(s, "owner_id")
             if owner_id not in alliance_cache:
-                alliance_cache[owner_id] = (
-                    _fetch_alliance_for_corp(owner_id) if owner_id else ("", "", "")
-                )
+                alliance_cache[owner_id] = _resolve_alliance_for_corp(owner_id, local_corps)
             alliance_name, alliance_ticker, alliance_id = alliance_cache[owner_id]
 
             raw_inserted_at = s.get("inserted_at")
