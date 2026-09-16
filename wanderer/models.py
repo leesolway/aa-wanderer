@@ -346,7 +346,7 @@ class Structure(StructureFieldsMixin, models.Model):
         return f"{self.name} ({self.solar_system.name})"
 
     class Meta:
-        ordering = ["solar_system__name", "name"]
+        ordering = ["-last_seen_at", "solar_system__name", "name"]
         constraints = [
             models.UniqueConstraint(
                 fields=["solar_system", "name", "structure_type_id"],

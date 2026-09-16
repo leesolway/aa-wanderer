@@ -366,7 +366,7 @@ def system_detail(request, solar_system_id: int):
             "solar_system": solar_system,
             "wh_class": wh_class,
             "effect": effect,
-            "active_structures": qs.filter(is_active=True).order_by("name"),
+            "active_structures": qs.filter(is_active=True).order_by("-last_seen_at", "name"),
             "inactive_structures": qs.filter(is_active=False).order_by("-removed_at"),
         },
     )

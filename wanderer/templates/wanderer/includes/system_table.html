@@ -40,7 +40,7 @@
                             </td>
                             <td class="col-class">
                                 {% if system.wh_class %}
-                                    <span class="badge bg-secondary">{{ system.wh_class.short_name }}</span>
+                                    <span class="fw-semibold" {% if system.wh_class.color %}style="color:{{ system.wh_class.color }};"{% endif %}>{{ system.wh_class.short_name }}</span>
                                 {% else %}
                                     <span class="text-muted">&mdash;</span>
                                 {% endif %}
@@ -48,7 +48,7 @@
                             <td class="col-statics">
                                 {% for static in system.statics %}
                                     {% for cls in static.leads_to.all %}
-                                        <span class="badge bg-secondary">{{ cls.short_name }}</span>
+                                        <span class="fw-semibold me-1" {% if cls.color %}style="color:{{ cls.color }};"{% endif %}>{{ cls.short_name }}</span>
                                     {% endfor %}
                                 {% empty %}
                                     <span class="text-muted">&mdash;</span>
