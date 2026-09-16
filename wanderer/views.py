@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,7 +16,7 @@ from eve_sde.models import SolarSystem
 
 from allianceauth.eveonline.models import EveAllianceInfo, EveCorporationInfo
 
-from wormholes.models import Effect, WormholeClass, WormholeSystem
+from wormholes.models import Effect, EffectModifier, WormholeClass, WormholeSystem
 from allianceauth.services.hooks import get_extension_logger
 
 from wanderer.models import (
@@ -27,6 +28,18 @@ from wanderer.models import (
 from wanderer.tasks import add_alts_to_map, sync_all_map_structures
 
 logger = get_extension_logger(__name__)
+
+# Priority order for choosing which structure's owner to display as "primary" when
+# a system has multiple structures. Lower number = shown first.
+_STRUCTURE_TYPE_PRIORITY: dict[str, int] = {
+    "keepstar": 0,
+    "fortizar": 1,
+    "astrahus": 2,
+    "sotiyo": 3,
+    "tatara": 4,
+    "athanor": 5,
+    "raitaru": 6,
+}
 
 
 def _structure_filters(request) -> tuple[list[str], list[str], list[str]]:
@@ -180,31 +193,50 @@ def structures(request):
             }
         system = systems_by_id[s.solar_system_id]
         system["structure_count"] += 1
+        type_priority = _STRUCTURE_TYPE_PRIORITY.get(
+            (s.structure_type or "").lower().strip(), 99
+        )
         if s.owner_id:
-            system["corporations"][s.owner_id] = {
-                "owner_id": s.owner_id,
-                "owner_name": s.owner_name,
-                "owner_ticker": s.owner_ticker,
-            }
+            existing = system["corporations"].get(s.owner_id)
+            if existing is None or type_priority < existing["_priority"]:
+                system["corporations"][s.owner_id] = {
+                    "owner_id": s.owner_id,
+                    "owner_name": s.owner_name,
+                    "owner_ticker": s.owner_ticker,
+                    "_priority": type_priority,
+                }
         if s.alliance_id:
-            system["alliances"][s.alliance_id] = {
-                "alliance_id": s.alliance_id,
-                "alliance_name": s.alliance_name,
-                "alliance_ticker": s.alliance_ticker,
-            }
+            existing = system["alliances"].get(s.alliance_id)
+            if existing is None or type_priority < existing["_priority"]:
+                system["alliances"][s.alliance_id] = {
+                    "alliance_id": s.alliance_id,
+                    "alliance_name": s.alliance_name,
+                    "alliance_ticker": s.alliance_ticker,
+                    "_priority": type_priority,
+                }
         if s.last_seen_at and (
             system["last_updated"] is None or s.last_seen_at > system["last_updated"]
         ):
             system["last_updated"] = s.last_seen_at
 
+    modifiers_by_effect: dict[str, list[str]] = {}
+    for m in EffectModifier.objects.select_related("effect").order_by("-is_positive", "name"):
+        sign = "+" if m.is_positive else "−"
+        modifiers_by_effect.setdefault(m.effect.name, []).append(f"{sign} {m.name}")
+
     systems = []
     for system in systems_by_id.values():
         system["corporations"] = sorted(
-            system["corporations"].values(), key=lambda c: c["owner_name"]
+            system["corporations"].values(), key=lambda c: (c["_priority"], c["owner_name"])
         )
         system["alliances"] = sorted(
-            system["alliances"].values(), key=lambda a: a["alliance_name"]
+            system["alliances"].values(), key=lambda a: (a["_priority"], a["alliance_name"])
         )
+        effect = system["effect"]
+        if effect:
+            mods = modifiers_by_effect.get(effect.name, [])
+            system["effect_color"] = Effect.COLORS.get(effect.name, "#6c757d")
+            system["effect_tooltip"] = "\n".join([effect.name] + mods)
         systems.append(system)
 
     # Most recently updated system first. A missing last_updated shouldn't happen
@@ -249,11 +281,26 @@ def structures(request):
     selected_wh_classes = [c for c in wh_classes_all if str(c.class_id) in wh_class_id_set]
     selected_static_classes = [c for c in wh_classes_all if str(c.class_id) in static_leads_to_id_set]
 
+    paginator = Paginator(systems, 100)
+    try:
+        page_number = int(request.GET.get("page", 1))
+        if page_number < 1:
+            page_number = 1
+    except (ValueError, TypeError):
+        page_number = 1
+    page_obj = paginator.get_page(page_number)
+
+    # Build a query string without the page param so pagination links can append their own.
+    base_params = request.GET.copy()
+    base_params.pop("page", None)
+    base_query_string = base_params.urlencode()
+
     return render(
         request,
         "wanderer/structures.html",
         {
-            "systems": systems,
+            "page_obj": page_obj,
+            "base_query_string": base_query_string,
             "system_ids": system_ids,
             "corp_ids": corp_ids,
             "alliance_ids": alliance_ids,

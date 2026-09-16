@@ -1,42 +1,51 @@
 {% load i18n wanderer_tags %}
+<style>
+    .structures-table td { vertical-align: middle; }
+    .structures-table .col-system  { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .structures-table .col-class   { width: 4rem;  min-width: 4rem;  max-width: 4rem; }
+    .structures-table .col-statics { width: 8.5rem; min-width: 8.5rem; max-width: 8.5rem; white-space: nowrap; }
+    .structures-table .col-effect  { width: 2.5rem; min-width: 2.5rem; text-align: center; }
+    .structures-table .col-corp    { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .structures-table .col-alliance{ max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">{% translate "Solar Systems" %}</h5>
-        <span class="badge bg-primary">{{ systems|length }} {% translate "systems" %}</span>
+        <span class="badge bg-primary">{{ total_systems }} {% translate "systems" %}</span>
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-hover table-striped mb-0">
+            <table class="table table-hover table-striped mb-0 structures-table">
                 <thead class="table-dark">
                     <tr>
-                        <th>{% translate "Solar System" %}</th>
-                        <th>{% translate "WH Class" %}</th>
-                        <th>{% translate "Statics" %}</th>
-                        <th>{% translate "Effect" %}</th>
-                        <th>{% translate "Structures" %}</th>
+                        <th>{% translate "System" %}</th>
+                        <th class="col-class">{% translate "Class" %}</th>
+                        <th class="col-statics">{% translate "Statics" %}</th>
+                        <th class="col-effect">{% translate "Effect" %}</th>
+                        <th title="{% translate 'Structure count' %}">#</th>
                         <th>{% translate "Corporations" %}</th>
                         <th>{% translate "Alliances" %}</th>
-                        <th>{% translate "Last Updated" %}</th>
+                        <th>{% translate "Updated" %}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for system in systems %}
                         {% zkillboard_url 'system' system.solar_system.id as zkill_system %}
-                        <tr style="cursor: pointer;" onclick="window.location='{% url 'wanderer:system_detail' system.solar_system.id %}'">
-                            <td>
+                        <tr class="text-nowrap" style="cursor: pointer;" onclick="window.location='{% url 'wanderer:system_detail' system.solar_system.id %}'">
+                            <td class="col-system" title="{{ system.solar_system.name }}">
                                 <a href="{% url 'wanderer:system_detail' system.solar_system.id %}">{{ system.solar_system.name }}</a>
                                 <a href="{{ zkill_system }}" target="_blank" rel="noopener noreferrer" class="text-muted ms-1" onclick="event.stopPropagation()" title="{% translate 'zKillboard' %}">
                                     <i class="fas fa-external-link-alt fa-xs"></i>
                                 </a>
                             </td>
-                            <td>
+                            <td class="col-class">
                                 {% if system.wh_class %}
                                     <span class="badge bg-secondary">{{ system.wh_class.short_name }}</span>
                                 {% else %}
                                     <span class="text-muted">&mdash;</span>
                                 {% endif %}
                             </td>
-                            <td>
+                            <td class="col-statics">
                                 {% for static in system.statics %}
                                     {% for cls in static.leads_to.all %}
                                         <span class="badge bg-secondary">{{ cls.short_name }}</span>
@@ -45,37 +54,55 @@
                                     <span class="text-muted">&mdash;</span>
                                 {% endfor %}
                             </td>
-                            <td>
+                            <td class="col-effect">
                                 {% if system.effect %}
-                                    {{ system.effect.name }}
+                                    <span class="d-inline-block rounded-1"
+                                          style="width:1rem;height:1rem;background-color:{{ system.effect_color }};"
+                                          title="{{ system.effect_tooltip }}"></span>
                                 {% else %}
                                     <span class="text-muted">&mdash;</span>
                                 {% endif %}
                             </td>
                             <td>{{ system.structure_count }}</td>
-                            <td>
-                                {% for corp in system.corporations %}
-                                    {% zkillboard_url 'corporation' corp.owner_id as zkill_corp %}
+                            <td class="col-corp">
+                                {% with primary=system.corporations.0 %}
+                                {% if primary %}
+                                    {% zkillboard_url 'corporation' primary.owner_id as zkill_corp %}
                                     <a href="{{ zkill_corp }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                        {{ corp.owner_name }}{% if corp.owner_ticker %} <span class="text-muted">[{{ corp.owner_ticker }}]</span>{% endif %}
-                                    </a>{% if not forloop.last %}, {% endif %}
-                                {% empty %}
+                                        {{ primary.owner_name }}{% if primary.owner_ticker %} <span class="text-muted">[{{ primary.owner_ticker }}]</span>{% endif %}
+                                    </a>
+                                    {% if system.corporations|length > 1 %}
+                                        <span class="badge bg-secondary ms-1"
+                                              title="{% for c in system.corporations %}{{ c.owner_name }}{% if c.owner_ticker %} [{{ c.owner_ticker }}]{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}">
+                                            +{{ system.corporations|length|add:"-1" }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
                                     <span class="text-muted">&mdash;</span>
-                                {% endfor %}
+                                {% endif %}
+                                {% endwith %}
                             </td>
-                            <td>
-                                {% for alliance in system.alliances %}
-                                    {% zkillboard_url 'alliance' alliance.alliance_id as zkill_alliance %}
+                            <td class="col-alliance">
+                                {% with primary=system.alliances.0 %}
+                                {% if primary %}
+                                    {% zkillboard_url 'alliance' primary.alliance_id as zkill_alliance %}
                                     <a href="{{ zkill_alliance }}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()">
-                                        {{ alliance.alliance_name }}{% if alliance.alliance_ticker %} <span class="text-muted">[{{ alliance.alliance_ticker }}]</span>{% endif %}
-                                    </a>{% if not forloop.last %}, {% endif %}
-                                {% empty %}
+                                        {{ primary.alliance_name }}{% if primary.alliance_ticker %} <span class="text-muted">[{{ primary.alliance_ticker }}]</span>{% endif %}
+                                    </a>
+                                    {% if system.alliances|length > 1 %}
+                                        <span class="badge bg-secondary ms-1"
+                                              title="{% for a in system.alliances %}{{ a.alliance_name }}{% if a.alliance_ticker %} [{{ a.alliance_ticker }}]{% endif %}{% if not forloop.last %}, {% endif %}{% endfor %}">
+                                            +{{ system.alliances|length|add:"-1" }}
+                                        </span>
+                                    {% endif %}
+                                {% else %}
                                     <span class="text-muted">&mdash;</span>
-                                {% endfor %}
+                                {% endif %}
+                                {% endwith %}
                             </td>
                             <td>
                                 {% if system.last_updated %}
-                                    {{ system.last_updated|date:"Y-m-d H:i" }}
+                                    <span title="{{ system.last_updated }}">{{ system.last_updated|date:"Y-m-d" }}</span>
                                 {% else %}
                                     <span class="text-muted">&mdash;</span>
                                 {% endif %}

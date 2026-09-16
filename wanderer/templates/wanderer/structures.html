@@ -5,7 +5,9 @@
 <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.bootstrap5.min.css" rel="stylesheet">
 <link href="{% static 'wanderer/css/tom-select-theme.css' %}" rel="stylesheet">
 <style>
-    .preset-badge { cursor: pointer; }
+    .preset-badge  { cursor: pointer; }
+    .filter-badge  { cursor: pointer; }
+    .filter-badge:hover { opacity: 0.85; }
 </style>
 {% endblock extra_css %}
 
@@ -73,47 +75,87 @@
         <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
             <span class="text-muted small fw-semibold me-1">{% translate "Filters:" %}</span>
             {% if filter_mode == "and" %}
-                <span class="badge bg-primary">{% translate "AND" %}</span>
+                <span class="badge bg-primary filter-badge" onclick="removeFilter('filter_mode', 'and')" title="{% translate 'Remove' %}">
+                    {% translate "AND" %} <i class="fas fa-times fa-xs ms-1"></i>
+                </span>
             {% endif %}
             {% for s in selected_systems %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-map-marker-alt fa-fw me-1"></i>{% translate "System:" %} {{ s.name }}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('system_id', '{{ s.id }}')" title="{% translate 'Remove' %}">
+                    {% translate "Solar System:" %} {{ s.name }} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
             {% for c in selected_corps %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-building fa-fw me-1"></i>{{ c.owner_name }}{% if c.owner_ticker %} [{{ c.owner_ticker }}]{% endif %}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('corp_id', '{{ c.owner_id }}')" title="{% translate 'Remove' %}">
+                    {{ c.owner_name }}{% if c.owner_ticker %} [{{ c.owner_ticker }}]{% endif %} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
             {% for a in selected_alliances %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-shield-halved fa-fw me-1"></i>{{ a.alliance_name }}{% if a.alliance_ticker %} [{{ a.alliance_ticker }}]{% endif %}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('alliance_id', '{{ a.alliance_id }}')" title="{% translate 'Remove' %}">
+                    {{ a.alliance_name }}{% if a.alliance_ticker %} [{{ a.alliance_ticker }}]{% endif %} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
             {% for cls in selected_wh_classes %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-circle fa-fw me-1"></i>{% translate "Class:" %} {{ cls.short_name }}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('wh_class_id', '{{ cls.class_id }}')" title="{% translate 'Remove' %}">
+                    {% translate "WH Class:" %} {{ cls.short_name }} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
             {% for cls in selected_static_classes %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-arrow-right-to-bracket fa-fw me-1"></i>{% translate "Static:" %} {{ cls.short_name }}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('static_leads_to', '{{ cls.class_id }}')" title="{% translate 'Remove' %}">
+                    {% translate "Static:" %} {{ cls.short_name }} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
             {% for name in effect_names %}
-                <span class="badge bg-secondary">
-                    <i class="fas fa-bolt fa-fw me-1"></i>{{ name }}
+                <span class="badge bg-secondary filter-badge" onclick="removeFilter('effect_name', '{{ name }}')" title="{% translate 'Remove' %}">
+                    {{ name }} <i class="fas fa-times fa-xs ms-1"></i>
                 </span>
             {% endfor %}
-            <a href="{% url 'wanderer:structures' %}" class="btn btn-outline-secondary btn-sm ms-auto">
+            <a href="{% url 'wanderer:structures' %}" class="btn btn-secondary btn-sm ms-auto">
                 <i class="fas fa-times fa-fw"></i> {% translate "Clear" %}
             </a>
         </div>
     </div>
     {% endif %}
 
-    {% if systems %}
-        {% include "wanderer/includes/system_table.html" %}
+    {% if page_obj.object_list %}
+        {% include "wanderer/includes/system_table.html" with systems=page_obj.object_list %}
+
+        {% if page_obj.paginator.num_pages > 1 %}
+        <nav aria-label="{% translate 'Systems pagination' %}">
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+                    <a class="page-link" href="?{% if base_query_string %}{{ base_query_string }}&{% endif %}page={% if page_obj.has_previous %}{{ page_obj.previous_page_number }}{% else %}1{% endif %}">
+                        <i class="fas fa-chevron-left fa-fw"></i>
+                    </a>
+                </li>
+                {% for num in page_obj.paginator.page_range %}
+                    {% if page_obj.number == num %}
+                        <li class="page-item active" aria-current="page">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                    {% elif num >= page_obj.number|add:"-3" and num <= page_obj.number|add:"3" %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% if base_query_string %}{{ base_query_string }}&{% endif %}page={{ num }}">{{ num }}</a>
+                        </li>
+                    {% elif num == 1 or num == page_obj.paginator.num_pages %}
+                        {% if num == 1 and page_obj.number > 5 %}
+                            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                        {% endif %}
+                        <li class="page-item">
+                            <a class="page-link" href="?{% if base_query_string %}{{ base_query_string }}&{% endif %}page={{ num }}">{{ num }}</a>
+                        </li>
+                        {% if num == page_obj.paginator.num_pages and page_obj.number < page_obj.paginator.num_pages|add:"-4" %}
+                            <li class="page-item disabled"><span class="page-link">&hellip;</span></li>
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="?{% if base_query_string %}{{ base_query_string }}&{% endif %}page={% if page_obj.has_next %}{{ page_obj.next_page_number }}{% else %}{{ page_obj.paginator.num_pages }}{% endif %}">
+                        <i class="fas fa-chevron-right fa-fw"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
     {% else %}
         <div class="alert alert-warning text-center">
             {% translate "No solar systems found." %}
@@ -391,5 +433,14 @@ function deletePreset(presetId) {
 }
 
 renderPresets();
+
+function removeFilter(param, value) {
+    const url = new URL(window.location.href);
+    const remaining = url.searchParams.getAll(param).filter(v => v !== String(value));
+    url.searchParams.delete(param);
+    remaining.forEach(v => url.searchParams.append(param, v));
+    url.searchParams.delete('page');
+    window.location.href = url.toString();
+}
 </script>
 {% endblock extra_javascript %}
