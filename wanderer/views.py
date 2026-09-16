@@ -106,6 +106,9 @@ def structures(request):
     """List solar systems that have at least one currently-active structure."""
     system_ids, corp_ids, alliance_ids = _structure_filters(request)
     wh_class_ids, static_leads_to_ids, effect_names = _wh_filters(request)
+    filter_mode = request.GET.get("filter_mode", "or")
+    if filter_mode not in ("or", "and"):
+        filter_mode = "or"
 
     wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
 
@@ -117,14 +120,22 @@ def structures(request):
     ).prefetch_related("solar_system__wormhole_info__statics__leads_to")
 
     if system_ids or corp_ids or alliance_ids:
-        q = Q()
-        if system_ids:
-            q |= Q(solar_system__id__in=system_ids)
-        if corp_ids:
-            q |= Q(owner_id__in=corp_ids)
-        if alliance_ids:
-            q |= Q(alliance_id__in=alliance_ids)
-        qs = qs.filter(q)
+        if filter_mode == "and":
+            if system_ids:
+                qs = qs.filter(solar_system__id__in=system_ids)
+            if corp_ids:
+                qs = qs.filter(owner_id__in=corp_ids)
+            if alliance_ids:
+                qs = qs.filter(alliance_id__in=alliance_ids)
+        else:
+            q = Q()
+            if system_ids:
+                q |= Q(solar_system__id__in=system_ids)
+            if corp_ids:
+                q |= Q(owner_id__in=corp_ids)
+            if alliance_ids:
+                q |= Q(alliance_id__in=alliance_ids)
+            qs = qs.filter(q)
 
     if wh_class_ids:
         qs = qs.filter(solar_system__wormhole_info__wormhole_class__class_id__in=wh_class_ids)
@@ -202,10 +213,25 @@ def structures(request):
     never_updated = timezone.now() - timedelta(days=36500)
     systems.sort(key=lambda system: system["last_updated"] or never_updated, reverse=True)
 
+    total_structures = sum(s["structure_count"] for s in systems)
+    total_systems = len(systems)
+    all_corp_ids = set()
+    all_alliance_ids = set()
+    for s in systems:
+        for c in s["corporations"]:
+            all_corp_ids.add(c["owner_id"])
+        for a in s["alliances"]:
+            all_alliance_ids.add(a["alliance_id"])
+    total_corps = len(all_corp_ids)
+    total_alliances = len(all_alliance_ids)
+
     selected_systems, selected_corps, selected_alliances = _selected_filter_labels(
         system_ids, corp_ids, alliance_ids
     )
-    presets = list(StructureFilterPreset.objects.values("id", "name", "solar_system_ids", "corporation_ids", "alliance_ids", "created_by_id"))
+    presets = list(StructureFilterPreset.objects.values(
+        "id", "name", "solar_system_ids", "corporation_ids", "alliance_ids",
+        "wh_class_ids", "static_leads_to_ids", "effect_names", "created_by_id",
+    ))
 
     wh_classes_all = list(WormholeClass.objects.filter(
         category__in=[
@@ -217,6 +243,11 @@ def structures(request):
         ]
     ).order_by("class_id"))
     effects_all = list(Effect.objects.all())
+
+    wh_class_id_set = set(wh_class_ids)
+    static_leads_to_id_set = set(static_leads_to_ids)
+    selected_wh_classes = [c for c in wh_classes_all if str(c.class_id) in wh_class_id_set]
+    selected_static_classes = [c for c in wh_classes_all if str(c.class_id) in static_leads_to_id_set]
 
     return render(
         request,
@@ -232,7 +263,14 @@ def structures(request):
             "selected_systems": selected_systems,
             "selected_corps": selected_corps,
             "selected_alliances": selected_alliances,
+            "selected_wh_classes": selected_wh_classes,
+            "selected_static_classes": selected_static_classes,
             "active_filters": bool(system_ids or corp_ids or alliance_ids or wh_class_ids or static_leads_to_ids or effect_names),
+            "filter_mode": filter_mode,
+            "total_structures": total_structures,
+            "total_systems": total_systems,
+            "total_corps": total_corps,
+            "total_alliances": total_alliances,
             "presets": presets,
             "wh_classes_all": wh_classes_all,
             "effects_all": effects_all,
@@ -406,6 +444,9 @@ def preset_save(request):
             "solar_system_ids": data.get("solar_system_ids", []),
             "corporation_ids": data.get("corporation_ids", []),
             "alliance_ids": data.get("alliance_ids", []),
+            "wh_class_ids": data.get("wh_class_ids", []),
+            "static_leads_to_ids": data.get("static_leads_to_ids", []),
+            "effect_names": data.get("effect_names", []),
         },
     )
     return JsonResponse({
@@ -415,6 +456,9 @@ def preset_save(request):
         "solar_system_ids": preset.solar_system_ids,
         "corporation_ids": preset.corporation_ids,
         "alliance_ids": preset.alliance_ids,
+        "wh_class_ids": preset.wh_class_ids,
+        "static_leads_to_ids": preset.static_leads_to_ids,
+        "effect_names": preset.effect_names,
         "created_by_id": preset.created_by_id,
     })
 

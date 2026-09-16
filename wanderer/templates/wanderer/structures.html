@@ -30,13 +30,87 @@
                 <i class="fas fa-filter fa-fw"></i> {% translate "Filter" %}
                 {% if active_filters %}<span class="badge text-bg-warning ms-1">{% translate "Active" %}</span>{% endif %}
             </button>
-            {% if active_filters %}
-                <a href="{% url 'wanderer:structures' %}" class="btn btn-secondary btn-sm">
-                    <i class="fas fa-times fa-fw"></i> {% translate "Clear" %}
-                </a>
-            {% endif %}
         </div>
     </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase">{% translate "Structures" %}</div>
+                    <div class="fs-2 fw-bold">{{ total_structures }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase">{% translate "Systems" %}</div>
+                    <div class="fs-2 fw-bold">{{ total_systems }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase">{% translate "Corporations" %}</div>
+                    <div class="fs-2 fw-bold">{{ total_corps }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <div class="text-muted small text-uppercase">{% translate "Alliances" %}</div>
+                    <div class="fs-2 fw-bold">{{ total_alliances }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if active_filters %}
+    <div class="card mb-3">
+        <div class="card-body py-2 d-flex flex-wrap align-items-center gap-2">
+            <span class="text-muted small fw-semibold me-1">{% translate "Filters:" %}</span>
+            {% if filter_mode == "and" %}
+                <span class="badge bg-primary">{% translate "AND" %}</span>
+            {% endif %}
+            {% for s in selected_systems %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-map-marker-alt fa-fw me-1"></i>{% translate "System:" %} {{ s.name }}
+                </span>
+            {% endfor %}
+            {% for c in selected_corps %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-building fa-fw me-1"></i>{{ c.owner_name }}{% if c.owner_ticker %} [{{ c.owner_ticker }}]{% endif %}
+                </span>
+            {% endfor %}
+            {% for a in selected_alliances %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-shield-halved fa-fw me-1"></i>{{ a.alliance_name }}{% if a.alliance_ticker %} [{{ a.alliance_ticker }}]{% endif %}
+                </span>
+            {% endfor %}
+            {% for cls in selected_wh_classes %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-circle fa-fw me-1"></i>{% translate "Class:" %} {{ cls.short_name }}
+                </span>
+            {% endfor %}
+            {% for cls in selected_static_classes %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-arrow-right-to-bracket fa-fw me-1"></i>{% translate "Static:" %} {{ cls.short_name }}
+                </span>
+            {% endfor %}
+            {% for name in effect_names %}
+                <span class="badge bg-secondary">
+                    <i class="fas fa-bolt fa-fw me-1"></i>{{ name }}
+                </span>
+            {% endfor %}
+            <a href="{% url 'wanderer:structures' %}" class="btn btn-outline-secondary btn-sm ms-auto">
+                <i class="fas fa-times fa-fw"></i> {% translate "Clear" %}
+            </a>
+        </div>
+    </div>
+    {% endif %}
 
     {% if systems %}
         {% include "wanderer/includes/system_table.html" %}
@@ -117,6 +191,16 @@
                             {% endfor %}
                         </select>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label d-block">{% translate "Filter mode" %}</label>
+                        <div class="btn-group" role="group" aria-label="{% translate 'Filter mode' %}">
+                            <input type="radio" class="btn-check" name="filter_mode" id="filter_mode_or" value="or" {% if filter_mode != "and" %}checked{% endif %} autocomplete="off">
+                            <label class="btn btn-outline-secondary" for="filter_mode_or">{% translate "OR" %}</label>
+                            <input type="radio" class="btn-check" name="filter_mode" id="filter_mode_and" value="and" {% if filter_mode == "and" %}checked{% endif %} autocomplete="off">
+                            <label class="btn btn-outline-secondary" for="filter_mode_and">{% translate "AND" %}</label>
+                        </div>
+                        <div class="form-text">{% translate "OR — show structures matching any selected filter. AND — structure must match all filter groups." %}</div>
+                    </div>
                     <div class="d-flex justify-content-between">
                         <a href="{% url 'wanderer:structures' %}" class="btn btn-secondary">{% translate "Clear All" %}</a>
                         <button type="submit" class="btn btn-primary">{% translate "Apply" %}</button>
@@ -171,16 +255,32 @@ const tsSystems = makeTomSelect('id_solar_system', '{% url "wanderer:autocomplet
 const tsCorps = makeTomSelect('id_corporation', '{% url "wanderer:autocomplete_corporations" %}');
 const tsAlliances = makeTomSelect('id_alliance', '{% url "wanderer:autocomplete_alliances" %}');
 
-['id_wh_class', 'id_static_leads_to', 'id_effect'].forEach(id => {
-    new TomSelect('#' + id, {
-        plugins: ['remove_button'],
-        create: false,
-        render: {
-            no_results: function() {
-                return '<div class="no-results">{% translate "No results found" %}</div>';
-            }
+const tsWhClass = new TomSelect('#id_wh_class', {
+    plugins: ['remove_button'],
+    create: false,
+    render: {
+        no_results: function() {
+            return '<div class="no-results">{% translate "No results found" %}</div>';
         }
-    });
+    }
+});
+const tsStaticLeadsTo = new TomSelect('#id_static_leads_to', {
+    plugins: ['remove_button'],
+    create: false,
+    render: {
+        no_results: function() {
+            return '<div class="no-results">{% translate "No results found" %}</div>';
+        }
+    }
+});
+const tsEffect = new TomSelect('#id_effect', {
+    plugins: ['remove_button'],
+    create: false,
+    render: {
+        no_results: function() {
+            return '<div class="no-results">{% translate "No results found" %}</div>';
+        }
+    }
 });
 
 function renderPresets() {
@@ -232,6 +332,13 @@ function applyPreset(preset) {
     (preset.solar_system_ids || []).forEach(id => url.searchParams.append('system_id', id));
     (preset.corporation_ids || []).forEach(id => url.searchParams.append('corp_id', id));
     (preset.alliance_ids || []).forEach(id => url.searchParams.append('alliance_id', id));
+    (preset.wh_class_ids || []).forEach(id => url.searchParams.append('wh_class_id', id));
+    (preset.static_leads_to_ids || []).forEach(id => url.searchParams.append('static_leads_to', id));
+    (preset.effect_names || []).forEach(name => url.searchParams.append('effect_name', name));
+    const filterMode = document.querySelector('input[name="filter_mode"]:checked');
+    if (filterMode && filterMode.value === 'and') {
+        url.searchParams.set('filter_mode', 'and');
+    }
     window.location.href = url.toString();
 }
 
@@ -244,6 +351,9 @@ function savePreset() {
         solar_system_ids: tsSystems.getValue(),
         corporation_ids: tsCorps.getValue(),
         alliance_ids: tsAlliances.getValue(),
+        wh_class_ids: tsWhClass.getValue(),
+        static_leads_to_ids: tsStaticLeadsTo.getValue(),
+        effect_names: tsEffect.getValue(),
     };
 
     fetch('{% url "wanderer:preset_save" %}', {

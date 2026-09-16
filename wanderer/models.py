@@ -391,6 +391,9 @@ class StructureFilterPreset(models.Model):
     solar_system_ids = models.JSONField(default=list, blank=True)
     corporation_ids = models.JSONField(default=list, blank=True)
     alliance_ids = models.JSONField(default=list, blank=True)
+    wh_class_ids = models.JSONField(default=list, blank=True)
+    static_leads_to_ids = models.JSONField(default=list, blank=True)
+    effect_names = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
