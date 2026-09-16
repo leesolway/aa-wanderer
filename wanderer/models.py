@@ -17,7 +17,6 @@ from allianceauth.eveonline.models import (
 from allianceauth.framework.api.user import get_all_characters_from_user
 from allianceauth.services.hooks import get_extension_logger
 
-from wanderer.managers import WandererManagedMapManager
 from wanderer.wanderer import (
     AccessListRoles,
     NotFoundError,
@@ -42,8 +41,6 @@ class General(models.Model):
 
 class WandererManagedMap(models.Model):
     """Wanderer map with an ACL managed by the auth"""
-
-    objects = WandererManagedMapManager()
 
     name = models.CharField(
         max_length=80,
@@ -205,7 +202,7 @@ class WandererManagedMap(models.Model):
             )
         )
 
-    def get_non_member_characters(self) -> list[(int, AccessListRoles)]:
+    def get_non_member_characters(self) -> list[tuple[int, AccessListRoles]]:
         """
         Return a list of all character ids and roles that are not set as members
         """

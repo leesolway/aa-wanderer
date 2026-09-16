@@ -29,8 +29,6 @@ class OwnerEveIdDoesNotExistError(Exception):
     """Exception raised when attempting to create a map with an owner not known by Wanderer"""
 
 
-DEFAULT_TIMEOUT = 5
-
 # The structures endpoint (especially with include_removed=true) returns the
 # full history for a map and can take well over the default 5s to respond.
 STRUCTURES_TIMEOUT = 60
