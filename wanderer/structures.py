@@ -98,10 +98,19 @@ def reconcile_structures() -> None:
             new_structures.append(new_struct)
             continue
 
+        _owner_fields = {
+            "owner_name", "owner_ticker", "owner_id",
+            "alliance_name", "alliance_ticker", "alliance_id",
+        }
         changed_fields = [
             field
             for field in STRUCTURE_TRACKED_FIELDS
             if getattr(existing, field) != getattr(latest, field)
+            and not (
+                field in _owner_fields
+                and getattr(existing, field)
+                and not getattr(latest, field)
+            )
         ]
         was_inactive = not existing.is_active
 

@@ -176,6 +176,39 @@ class TestReconcileStructures(TestCase):
             0,
         )
 
+    def test_owner_not_cleared_when_newer_snapshot_has_no_owner(self):
+        """A snapshot without owner info must not overwrite a previously known owner."""
+        now = timezone.now()
+        create_map_structure(
+            self.map_a,
+            self.solar_system,
+            wanderer_id="a-1",
+            owner_name="Known Corp",
+            owner_ticker="KNOWN",
+            owner_id="1000001",
+            structure_updated_at=now - timezone.timedelta(hours=1),
+        )
+        reconcile_structures()
+
+        # Newer snapshot arrives with no owner info
+        MapStructure.objects.filter(wanderer_id="a-1").update(
+            owner_name="",
+            owner_ticker="",
+            owner_id="",
+            structure_updated_at=now,
+        )
+        reconcile_structures()
+
+        structure = Structure.objects.get()
+        self.assertEqual(structure.owner_name, "Known Corp")
+        self.assertEqual(structure.owner_ticker, "KNOWN")
+        self.assertEqual(structure.owner_id, "1000001")
+        # No history entry — nothing meaningful changed
+        self.assertEqual(
+            StructureHistory.objects.filter(change_type=StructureHistory.ChangeType.UPDATED).count(),
+            0,
+        )
+
     def test_different_structure_type_in_same_system_and_name_stays_distinct(self):
         create_map_structure(
             self.map_a, self.solar_system, wanderer_id="a-1",
