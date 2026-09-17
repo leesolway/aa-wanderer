@@ -101,9 +101,12 @@ class StructureHistoryAdmin(ReadOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(StructureFilterPreset)
 class StructureFilterPresetAdmin(admin.ModelAdmin):
-    list_display = ["name", "filter_mode", "created_by", "created_at"]
+    list_display = ["priority", "name", "filter_mode", "created_by", "created_at"]
+    list_display_links = ["name"]
+    list_editable = ["priority"]
     list_filter = ["filter_mode"]
     search_fields = ["name"]
+    ordering = ["priority", "name"]
     readonly_fields = ["created_by", "created_at"]
 
     def save_model(self, request, obj, form, change):

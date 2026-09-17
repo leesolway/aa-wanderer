@@ -390,6 +390,10 @@ class StructureFilterPreset(models.Model):
         AND = "and", _("AND (match all)")
 
     name = models.CharField(max_length=100, unique=True)
+    priority = models.IntegerField(
+        default=0,
+        help_text=_("Lower numbers appear first in the preset list."),
+    )
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="+"
     )
@@ -411,7 +415,7 @@ class StructureFilterPreset(models.Model):
         return self.name
 
     class Meta:
-        ordering = ["name"]
+        ordering = ["priority", "name"]
 
 
 class WandererAccount(models.Model):

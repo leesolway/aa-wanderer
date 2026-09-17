@@ -137,6 +137,10 @@ def structures(request):
     filter_mode = request.GET.get("filter_mode", "or")
     if filter_mode not in ("or", "and"):
         filter_mode = "or"
+    sort = request.GET.get("sort", "")
+    sort_dir = request.GET.get("dir", "asc")
+    if sort_dir not in ("asc", "desc"):
+        sort_dir = "asc"
 
     wh_classes_by_id = {c.class_id: c for c in WormholeClass.objects.all()}
 
@@ -246,14 +250,39 @@ def structures(request):
             system["effect_tooltip"] = "\n".join(lines)
         systems.append(system)
 
-    # Most recently updated system first. A missing last_updated shouldn't happen
-    # (reconcile_structures always sets it) but sorts to the bottom rather than
-    # blowing up the comparison if it ever does.
     never_updated = timezone.now() - timedelta(days=36500)
-    systems.sort(key=lambda system: system["last_updated"] or never_updated, reverse=True)
+    if sort == "class":
+        systems.sort(
+            key=lambda s: (s["wh_class"].class_id if s["wh_class"] else 99),
+            reverse=(sort_dir == "desc"),
+        )
+    elif sort == "corporation":
+        systems.sort(
+            key=lambda s: (s["corporations"][0]["owner_name"].lower() if s["corporations"] else ""),
+            reverse=(sort_dir == "desc"),
+        )
+    elif sort == "alliance":
+        systems.sort(
+            key=lambda s: (s["alliances"][0]["alliance_name"].lower() if s["alliances"] else ""),
+            reverse=(sort_dir == "desc"),
+        )
+    else:
+        # Default: most recently updated first.
+        systems.sort(key=lambda s: s["last_updated"] or never_updated, reverse=True)
 
     total_structures = sum(s["structure_count"] for s in systems)
     total_systems = len(systems)
+
+    _class_system_counts: dict[int, int] = {}
+    for system in systems:
+        wh_class = system["wh_class"]
+        if wh_class and 1 <= wh_class.class_id <= 6:
+            _class_system_counts[wh_class.class_id] = _class_system_counts.get(wh_class.class_id, 0) + 1
+    wh_class_counts = [
+        (wh_classes_by_id[class_id], _class_system_counts.get(class_id, 0))
+        for class_id in range(1, 7)
+        if class_id in wh_classes_by_id
+    ]
     all_corp_ids = set()
     all_alliance_ids = set()
     for s in systems:
@@ -268,7 +297,7 @@ def structures(request):
         system_ids, corp_ids, alliance_ids
     )
     presets = list(StructureFilterPreset.objects.values(
-        "id", "name", "solar_system_ids", "corporation_ids", "alliance_ids",
+        "id", "name", "priority", "solar_system_ids", "corporation_ids", "alliance_ids",
         "wh_class_ids", "static_leads_to_ids", "effect_names", "filter_mode", "created_by_id",
     ))
 
@@ -297,10 +326,15 @@ def structures(request):
         page_number = 1
     page_obj = paginator.get_page(page_number)
 
-    # Build a query string without the page param so pagination links can append their own.
+    # Pagination links preserve everything except page number.
     base_params = request.GET.copy()
     base_params.pop("page", None)
     base_query_string = base_params.urlencode()
+    # Sort links preserve filters but strip sort/dir so they can append their own.
+    sort_base_params = base_params.copy()
+    sort_base_params.pop("sort", None)
+    sort_base_params.pop("dir", None)
+    sort_base_query = sort_base_params.urlencode()
 
     return render(
         request,
@@ -308,6 +342,9 @@ def structures(request):
         {
             "page_obj": page_obj,
             "base_query_string": base_query_string,
+            "sort": sort,
+            "sort_dir": sort_dir,
+            "sort_base_query": sort_base_query,
             "system_ids": system_ids,
             "corp_ids": corp_ids,
             "alliance_ids": alliance_ids,
@@ -325,6 +362,7 @@ def structures(request):
             "total_systems": total_systems,
             "total_corps": total_corps,
             "total_alliances": total_alliances,
+            "wh_class_counts": wh_class_counts,
             "presets": presets,
             "wh_classes_all": wh_classes_all,
             "effects_all": effects_all,

@@ -35,38 +35,23 @@
     </div>
 
     <div class="row g-3 mb-3">
-        <div class="col-sm-6 col-xl-3">
-            <div class="card h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted small text-uppercase">{% translate "Structures" %}</div>
-                    <div class="fs-2 fw-bold">{{ total_structures }}</div>
-                </div>
-            </div>
+        <div class="col-sm-6 col-xl-4">
+            {% include "wanderer/includes/stat_card.html" with label=_("Systems") value=total_systems %}
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted small text-uppercase">{% translate "Systems" %}</div>
-                    <div class="fs-2 fw-bold">{{ total_systems }}</div>
-                </div>
-            </div>
+        <div class="col-sm-6 col-xl-4">
+            {% include "wanderer/includes/stat_card.html" with label=_("Corporations") value=total_corps %}
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted small text-uppercase">{% translate "Corporations" %}</div>
-                    <div class="fs-2 fw-bold">{{ total_corps }}</div>
-                </div>
-            </div>
+        <div class="col-sm-6 col-xl-4">
+            {% include "wanderer/includes/stat_card.html" with label=_("Alliances") value=total_alliances %}
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card h-100">
-                <div class="card-body text-center">
-                    <div class="text-muted small text-uppercase">{% translate "Alliances" %}</div>
-                    <div class="fs-2 fw-bold">{{ total_alliances }}</div>
-                </div>
-            </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        {% for wh_class, count in wh_class_counts %}
+        <div class="col">
+            {% include "wanderer/includes/stat_card.html" with label=wh_class.short_name value=count color=wh_class.color %}
         </div>
+        {% endfor %}
     </div>
 
     {% if active_filters %}
@@ -116,7 +101,7 @@
     {% endif %}
 
     {% if page_obj.object_list %}
-        {% include "wanderer/includes/system_table.html" with systems=page_obj.object_list %}
+        {% include "wanderer/includes/system_table.html" with systems=page_obj.object_list sort=sort sort_dir=sort_dir sort_base_query=sort_base_query %}
 
         {% if page_obj.paginator.num_pages > 1 %}
         <nav aria-label="{% translate 'Systems pagination' %}">
