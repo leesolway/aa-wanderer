@@ -1,5 +1,6 @@
 """Admin site."""
 
+from django import forms as django_forms
 from django.contrib import admin, messages
 
 from wanderer.models import (
@@ -12,7 +13,7 @@ from wanderer.models import (
     WandererAccount,
     WandererManagedMap,
 )
-from wanderer.tasks import sync_astropath_acl
+from wanderer.tasks import sync_all_astropath_acls, sync_astropath_acl
 from wanderer.wanderer import create_acl_associated_to_map
 
 
@@ -121,12 +122,22 @@ class StructureFilterPresetAdmin(admin.ModelAdmin):
 @admin.register(AstropathConfiguration)
 class AstropathConfigurationAdmin(admin.ModelAdmin):
     list_display = ["url"]
+    actions = ["sync_all_acls"]
 
     def has_add_permission(self, request):
         return not AstropathConfiguration.objects.exists()
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+    @admin.action(description="Sync all Astropath ACL mappings now")
+    def sync_all_acls(self, request, queryset):
+        sync_all_astropath_acls.delay()
+        self.message_user(
+            request,
+            "Queued sync for all Astropath ACLs. Check the worker log for results.",
+            messages.SUCCESS,
+        )
 
 
 @admin.register(AstropathACLMapping)
@@ -135,6 +146,22 @@ class AstropathACLMappingAdmin(admin.ModelAdmin):
     list_filter = ["role"]
     search_fields = ["group__name"]
     actions = ["trigger_sync"]
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        if db_field.name == "acl_id":
+            try:
+                from wanderer.astropath import list_acls
+                acls = list_acls()
+                choices = [(acl["id"], f"{acl['name']} (ID: {acl['id']})") for acl in acls]
+                return django_forms.TypedChoiceField(
+                    choices=choices,
+                    coerce=int,
+                    label="ACL",
+                    help_text="Select the Astropath ACL to map this group to.",
+                )
+            except Exception:
+                pass  # API unreachable or not configured — fall back to plain integer field
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
     @admin.action(description="Sync selected ACL mappings to Astropath now")
     def trigger_sync(self, request, queryset):

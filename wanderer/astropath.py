@@ -40,6 +40,23 @@ def _settings() -> tuple[str, str]:
     return config.url.rstrip("/"), config.api_key
 
 
+def list_acls() -> list[dict]:
+    """Fetch all access lists visible to the API key.
+
+    Returns a list of dicts with at least ``id`` (int) and ``name`` (str).
+    Raises AstropathNotConfiguredError if no configuration row exists,
+    or requests.HTTPError on a non-2xx response.
+    """
+    url, key = _settings()
+    r = requests.get(
+        f"{url}/external/v1/access-lists",
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=TIMEOUT,
+    )
+    r.raise_for_status()
+    return r.json()["lists"]
+
+
 def get_acl_entries(url: str, key: str, acl_id: int) -> tuple[int, list[dict]]:
     """
     Fetches the current entries for an ACL.
