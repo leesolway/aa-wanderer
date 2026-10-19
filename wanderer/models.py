@@ -441,22 +441,48 @@ class AstropathConfiguration(models.Model):
         verbose_name_plural = "Astropath Configuration"
 
 
+class AstropathACL(models.Model):
+    """A single Astropath access list managed by this auth instance."""
+
+    acl_id = models.BigIntegerField(
+        unique=True,
+        help_text=_("Numeric ID of the ACL in Astropath."),
+    )
+    name = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        help_text=_("Display name pulled from Astropath. Auto-populated when saving."),
+    )
+
+    def __str__(self):
+        return self.name or f"ACL {self.acl_id}"
+
+    class Meta:
+        verbose_name = "Astropath ACL"
+        verbose_name_plural = "Astropath ACLs"
+        ordering = ["name", "acl_id"]
+
+
 class AstropathACLMapping(models.Model):
-    """Maps an Alliance Auth Group to an Astropath ACL."""
+    """Maps an Alliance Auth Group to an Astropath ACL with a role."""
 
     class Role(models.TextChoices):
         VIEWER = "viewer", _("Viewer")
         EDITOR = "editor", _("Editor")
         ADMIN = "admin", _("Admin")
 
+    acl = models.ForeignKey(
+        AstropathACL,
+        on_delete=models.CASCADE,
+        related_name="mappings",
+        help_text=_("The Astropath ACL to sync this group into."),
+    )
     group = models.ForeignKey(
         Group,
         on_delete=models.CASCADE,
         related_name="astropath_acl_mappings",
         help_text=_("AA group whose members will be synced to the Astropath ACL."),
-    )
-    acl_id = models.BigIntegerField(
-        help_text=_("Numeric ID of the ACL in Astropath."),
     )
     role = models.CharField(
         max_length=10,
@@ -466,15 +492,15 @@ class AstropathACLMapping(models.Model):
     )
 
     def __str__(self):
-        return f"{self.group.name} → ACL {self.acl_id} ({self.role})"
+        return f"{self.group.name} → {self.acl} ({self.role})"
 
     class Meta:
         verbose_name = "Astropath ACL Mapping"
         verbose_name_plural = "Astropath ACL Mappings"
         constraints = [
             models.UniqueConstraint(
-                fields=["group", "acl_id"],
-                name="unique_astropath_group_acl",
+                fields=["acl", "group"],
+                name="unique_astropath_acl_group",
             )
         ]
 

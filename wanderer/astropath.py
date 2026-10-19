@@ -9,6 +9,8 @@ Connection details are stored in a single AstropathConfiguration row in the DB,
 managed via the Django admin.
 """
 
+import time
+
 import requests
 from django.contrib.auth.models import User
 
@@ -88,6 +90,11 @@ def replace_acl_entries(
     )
     if r.status_code == 409:
         raise AstropathConflictError(f"Stale revision {revision} for ACL {acl_id}")
+    if not r.ok:
+        logger.error(
+            "Astropath PUT /access-lists/%d/entries returned %d: %s",
+            acl_id, r.status_code, r.text,
+        )
     r.raise_for_status()
     return r.json()
 
@@ -125,31 +132,30 @@ def sync_acl(acl_id: int, group_roles: list[tuple[int, str]]) -> dict:
     Syncs a single Astropath ACL to match the members of the mapped groups.
 
     group_roles: list of (group_id, role) pairs for this ACL.
-    Returns the SyncResult dict from Astropath.
+    Returns the SyncResult dict from Astropath, or {} if a newer sync already ran.
 
-    Retries once on a stale-revision 409 (another process may have written
-    between our GET and our PUT).
+    The revision is a client-supplied monotonically increasing value — the contract
+    requires it to be strictly greater than the last stored revision (see
+    contracts/external-v1.yaml). We use the current time in milliseconds, which
+    satisfies this without needing a prior GET. A 409 means another process synced
+    more recently, so our data is already superseded — we skip rather than retry.
     """
     url, key = _settings()
     entries = _build_entries(group_roles)
-
-    for attempt in range(2):
-        revision, _ = get_acl_entries(url, key, acl_id)
-        try:
-            result = replace_acl_entries(url, key, acl_id, revision, entries)
-            logger.info(
-                "Synced ACL %d: %d entries, +%d -%d ~%d",
-                acl_id,
-                result.get("entryCount", 0),
-                result.get("added", 0),
-                result.get("removed", 0),
-                result.get("changed", 0),
-            )
-            return result
-        except AstropathConflictError:
-            if attempt == 0:
-                logger.warning("Stale revision for ACL %d, retrying once", acl_id)
-                continue
-            raise
-
-    return {}  # unreachable, but satisfies type checkers
+    revision = int(time.time() * 1000)
+    try:
+        result = replace_acl_entries(url, key, acl_id, revision, entries)
+    except AstropathConflictError:
+        logger.info(
+            "ACL %d already synced with a newer revision, skipping", acl_id
+        )
+        return {}
+    logger.info(
+        "Synced ACL %d: %d entries, +%d -%d ~%d",
+        acl_id,
+        result.get("entryCount", 0),
+        result.get("added", 0),
+        result.get("removed", 0),
+        result.get("changed", 0),
+    )
+    return result

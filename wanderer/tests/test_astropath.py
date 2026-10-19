@@ -59,42 +59,39 @@ class TestSyncAcl(TestCase):
         self.config = _config()
         self.group = Group.objects.create(name="Test Group")
 
+    @patch("wanderer.astropath.time.time", return_value=1_700_000_000.0)
     @patch("wanderer.astropath.requests.put")
-    @patch("wanderer.astropath.requests.get")
-    def test_get_then_put(self, mock_get, mock_put):
-        mock_get.return_value = _response(200, ENTRIES_RESPONSE)
+    def test_puts_with_timestamp_revision(self, mock_put, mock_time):
         mock_put.return_value = _response(200, SYNC_RESULT)
 
         sync_acl(42, [(self.group.id, "viewer")])
 
-        mock_get.assert_called_once_with(
+        mock_put.assert_called_once_with(
             "https://ap.localhost/external/v1/access-lists/42/entries",
+            json={"revision": 1_700_000_000_000, "entries": []},
             headers={"Authorization": "Bearer ap_test"},
             timeout=30,
-        )  # trailing slash on stored URL is stripped by _settings()
-        mock_put.assert_called_once()
-        put_body = mock_put.call_args.kwargs["json"]
-        self.assertEqual(put_body["revision"], 1)
+        )
+
+    @patch("wanderer.astropath.time.time", return_value=1_700_000_000.0)
+    @patch("wanderer.astropath.requests.put")
+    def test_conflict_is_skipped_not_retried(self, mock_put, mock_time):
+        """A 409 means a newer sync already ran — we should drop this attempt."""
+        mock_put.return_value = _conflict()
+
+        result = sync_acl(42, [(self.group.id, "viewer")])
+
+        self.assertEqual(mock_put.call_count, 1)
+        self.assertEqual(result, {})
 
     @patch("wanderer.astropath.requests.put")
-    @patch("wanderer.astropath.requests.get")
-    def test_retries_once_on_conflict(self, mock_get, mock_put):
-        mock_get.return_value = _response(200, ENTRIES_RESPONSE)
-        mock_put.side_effect = [_conflict(), _response(200, SYNC_RESULT)]
+    def test_no_get_is_issued(self, mock_put):
+        """sync_acl must not call GET /entries — revision comes from the clock."""
+        mock_put.return_value = _response(200, SYNC_RESULT)
 
-        sync_acl(42, [(self.group.id, "viewer")])
-
-        self.assertEqual(mock_get.call_count, 2)
-        self.assertEqual(mock_put.call_count, 2)
-
-    @patch("wanderer.astropath.requests.put")
-    @patch("wanderer.astropath.requests.get")
-    def test_raises_on_second_conflict(self, mock_get, mock_put):
-        mock_get.return_value = _response(200, ENTRIES_RESPONSE)
-        mock_put.side_effect = [_conflict(), _conflict()]
-
-        with self.assertRaises(AstropathConflictError):
+        with patch("wanderer.astropath.requests.get") as mock_get:
             sync_acl(42, [(self.group.id, "viewer")])
+            mock_get.assert_not_called()
 
     def test_not_configured(self):
         AstropathConfiguration.objects.all().delete()

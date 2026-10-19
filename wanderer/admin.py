@@ -4,6 +4,7 @@ from django import forms as django_forms
 from django.contrib import admin, messages
 
 from wanderer.models import (
+    AstropathACL,
     AstropathACLMapping,
     AstropathConfiguration,
     MapStructure,
@@ -122,7 +123,7 @@ class StructureFilterPresetAdmin(admin.ModelAdmin):
 @admin.register(AstropathConfiguration)
 class AstropathConfigurationAdmin(admin.ModelAdmin):
     list_display = ["url"]
-    actions = ["sync_all_acls"]
+    actions = ["sync_all_acls", "test_connection"]
 
     def has_add_permission(self, request):
         return not AstropathConfiguration.objects.exists()
@@ -139,33 +140,89 @@ class AstropathConfigurationAdmin(admin.ModelAdmin):
             messages.SUCCESS,
         )
 
+    @admin.action(description="Test connection and list available ACLs")
+    def test_connection(self, request, queryset):
+        from wanderer.astropath import AstropathNotConfiguredError, list_acls
+        try:
+            acls = list_acls()
+        except AstropathNotConfiguredError as e:
+            self.message_user(request, str(e), messages.ERROR)
+            return
+        except Exception as e:
+            self.message_user(request, f"Astropath API error: {e}", messages.ERROR)
+            return
+        if not acls:
+            self.message_user(
+                request,
+                "Connected successfully, but no ACLs are visible to this API key. "
+                "Create ACLs in the Astropath UI and ensure this key has access to them.",
+                messages.WARNING,
+            )
+        else:
+            names = ", ".join(f"{a['name']} (ID: {a['id']})" for a in acls)
+            self.message_user(request, f"Connected. {len(acls)} ACL(s) available: {names}", messages.SUCCESS)
 
-@admin.register(AstropathACLMapping)
-class AstropathACLMappingAdmin(admin.ModelAdmin):
-    list_display = ["group", "acl_id", "role"]
-    list_filter = ["role"]
-    search_fields = ["group__name"]
+
+class AstropathACLMappingInline(admin.TabularInline):
+    model = AstropathACLMapping
+    extra = 1
+    fields = ["group", "role"]
+
+
+@admin.register(AstropathACL)
+class AstropathACLAdmin(admin.ModelAdmin):
+    list_display = ["acl_id", "name", "group_summary"]
+    inlines = [AstropathACLMappingInline]
     actions = ["trigger_sync"]
+
+    def group_summary(self, obj):
+        parts = [f"{m.group.name} ({m.role})" for m in obj.mappings.select_related("group").all()]
+        return ", ".join(parts) or "—"
+    group_summary.short_description = "Groups"
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         if db_field.name == "acl_id":
+            from wanderer.astropath import AstropathNotConfiguredError, list_acls
             try:
-                from wanderer.astropath import list_acls
                 acls = list_acls()
-                choices = [(acl["id"], f"{acl['name']} (ID: {acl['id']})") for acl in acls]
-                return django_forms.TypedChoiceField(
-                    choices=choices,
-                    coerce=int,
-                    label="ACL",
-                    help_text="Select the Astropath ACL to map this group to.",
+            except AstropathNotConfiguredError:
+                return super().formfield_for_dbfield(db_field, request, **kwargs)
+            except Exception as e:
+                messages.error(request, f"Could not fetch ACL list from Astropath: {e}")
+                return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+            if not acls:
+                messages.warning(
+                    request,
+                    "Connected to Astropath but no ACLs are visible to this API key. "
+                    "Create ACLs in the Astropath UI and ensure the key has access to them.",
                 )
-            except Exception:
-                pass  # API unreachable or not configured — fall back to plain integer field
+                return super().formfield_for_dbfield(db_field, request, **kwargs)
+
+            choices = [(acl["id"], f"{acl['name']} (ID: {acl['id']})") for acl in acls]
+            return django_forms.TypedChoiceField(
+                choices=choices,
+                coerce=int,
+                label="ACL",
+                help_text="Select the Astropath ACL to map groups into.",
+            )
         return super().formfield_for_dbfield(db_field, request, **kwargs)
 
-    @admin.action(description="Sync selected ACL mappings to Astropath now")
+    def save_model(self, request, obj, form, change):
+        if not obj.name:
+            from wanderer.astropath import list_acls
+            try:
+                acls = list_acls()
+                match = next((a for a in acls if a["id"] == obj.acl_id), None)
+                if match:
+                    obj.name = match["name"]
+            except Exception:
+                pass
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Sync selected ACLs to Astropath now")
     def trigger_sync(self, request, queryset):
-        acl_ids = set(queryset.values_list("acl_id", flat=True))
+        acl_ids = list(queryset.values_list("acl_id", flat=True))
         for acl_id in acl_ids:
             sync_astropath_acl.delay(acl_id)
         self.message_user(

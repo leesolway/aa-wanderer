@@ -10,7 +10,7 @@ from allianceauth.services.hooks import get_extension_logger
 from eve_sde.models import SolarSystem
 
 from wanderer.astropath import sync_acl
-from wanderer.models import AstropathACLMapping, MapStructure, WandererAccount, WandererManagedMap
+from wanderer.models import AstropathACL, AstropathACLMapping, MapStructure, WandererAccount, WandererManagedMap
 from wanderer.structures import reconcile_structures
 from wanderer.wanderer import AccessListRoles, get_map_structures
 
@@ -341,7 +341,7 @@ def sync_astropath_acl(acl_id: int):
     """
     logger.info("Syncing Astropath ACL %d", acl_id)
     group_roles = list(
-        AstropathACLMapping.objects.filter(acl_id=acl_id).values_list("group_id", "role")
+        AstropathACLMapping.objects.filter(acl__acl_id=acl_id).values_list("group_id", "role")
     )
     if not group_roles:
         logger.warning("No mappings found for Astropath ACL %d, skipping", acl_id)
@@ -352,10 +352,10 @@ def sync_astropath_acl(acl_id: int):
 @shared_task
 def sync_all_astropath_acls():
     """
-    Syncs every distinct Astropath ACL that has at least one group mapping.
+    Syncs every Astropath ACL that has at least one group mapping.
     """
     acl_ids = list(
-        AstropathACLMapping.objects.values_list("acl_id", flat=True).distinct()
+        AstropathACL.objects.filter(mappings__isnull=False).values_list("acl_id", flat=True).distinct()
     )
     logger.info("Syncing %d Astropath ACLs", len(acl_ids))
     for acl_id in acl_ids:
