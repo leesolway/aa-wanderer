@@ -418,6 +418,67 @@ class StructureFilterPreset(models.Model):
         ordering = ["priority", "name"]
 
 
+class AstropathConfiguration(models.Model):
+    """
+    Singleton model holding the Astropath instance URL and API key.
+    Create exactly one row via the admin.
+    """
+
+    url = models.CharField(
+        max_length=200,
+        help_text=_("URL of the Astropath instance (e.g. https://astropath.outfit418.com)"),
+    )
+    api_key = models.CharField(
+        max_length=200,
+        help_text=_("API key with the access_lists:read and access_lists:write scopes."),
+    )
+
+    def __str__(self):
+        return self.url
+
+    class Meta:
+        verbose_name = "Astropath Configuration"
+        verbose_name_plural = "Astropath Configuration"
+
+
+class AstropathACLMapping(models.Model):
+    """Maps an Alliance Auth Group to an Astropath ACL."""
+
+    class Role(models.TextChoices):
+        VIEWER = "viewer", _("Viewer")
+        EDITOR = "editor", _("Editor")
+        ADMIN = "admin", _("Admin")
+
+    group = models.ForeignKey(
+        Group,
+        on_delete=models.CASCADE,
+        related_name="astropath_acl_mappings",
+        help_text=_("AA group whose members will be synced to the Astropath ACL."),
+    )
+    acl_id = models.BigIntegerField(
+        help_text=_("Numeric ID of the ACL in Astropath."),
+    )
+    role = models.CharField(
+        max_length=10,
+        choices=Role.choices,
+        default=Role.VIEWER,
+        help_text=_("Role assigned to group members in the ACL."),
+    )
+
+    def __str__(self):
+        return f"{self.group.name} → ACL {self.acl_id} ({self.role})"
+
+    class Meta:
+        verbose_name = "Astropath ACL Mapping"
+        verbose_name_plural = "Astropath ACL Mappings"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "acl_id"],
+                name="unique_astropath_group_acl",
+            )
+        ]
+
+
 class WandererAccount(models.Model):
     """Represents a user linked to a wanderer map"""
 

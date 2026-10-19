@@ -1,8 +1,10 @@
 """Admin site."""
 
-from django.contrib import admin
+from django.contrib import admin, messages
 
 from wanderer.models import (
+    AstropathACLMapping,
+    AstropathConfiguration,
     MapStructure,
     Structure,
     StructureFilterPreset,
@@ -10,6 +12,7 @@ from wanderer.models import (
     WandererAccount,
     WandererManagedMap,
 )
+from wanderer.tasks import sync_astropath_acl
 from wanderer.wanderer import create_acl_associated_to_map
 
 
@@ -113,6 +116,36 @@ class StructureFilterPresetAdmin(admin.ModelAdmin):
         if not change:
             obj.created_by = request.user
         super().save_model(request, obj, form, change)
+
+
+@admin.register(AstropathConfiguration)
+class AstropathConfigurationAdmin(admin.ModelAdmin):
+    list_display = ["url"]
+
+    def has_add_permission(self, request):
+        return not AstropathConfiguration.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(AstropathACLMapping)
+class AstropathACLMappingAdmin(admin.ModelAdmin):
+    list_display = ["group", "acl_id", "role"]
+    list_filter = ["role"]
+    search_fields = ["group__name"]
+    actions = ["trigger_sync"]
+
+    @admin.action(description="Sync selected ACL mappings to Astropath now")
+    def trigger_sync(self, request, queryset):
+        acl_ids = set(queryset.values_list("acl_id", flat=True))
+        for acl_id in acl_ids:
+            sync_astropath_acl.delay(acl_id)
+        self.message_user(
+            request,
+            f"Queued sync for {len(acl_ids)} Astropath ACL(s). Check the worker log for results.",
+            messages.SUCCESS,
+        )
 
 
 @admin.register(WandererAccount)

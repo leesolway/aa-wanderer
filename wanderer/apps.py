@@ -14,6 +14,7 @@ class WandererServiceConfig(AppConfig):
         """Runs service sync on startup"""
         # needs to be imported after the app is loaded
         from .auth_hooks import add_del_callback
+        from . import signals  # noqa: F401 - registers signal handlers
 
         try:
             add_del_callback()
